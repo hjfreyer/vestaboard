@@ -1,6 +1,10 @@
 import json
+import re
+from pathlib import Path
 
 from vestaboard_ha import settings as settings_module
+
+CONFIG = Path(__file__).resolve().parents[1] / "config.yaml"
 
 
 def test_addon_mode_uses_the_supervisor_proxy(tmp_path, monkeypatch):
@@ -35,6 +39,19 @@ def test_local_mode_builds_urls_from_hass_url(tmp_path, monkeypatch):
     assert settings.api_token == "from-env"
 
 
+def test_the_gallery_port_matches_ingress_unless_told_otherwise(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings_module, "OPTIONS_PATH", tmp_path / "missing.json")
+    monkeypatch.delenv("WEB_PORT", raising=False)
+
+    assert settings_module.load().web_port == settings_module.DEFAULT_WEB_PORT
+
+    monkeypatch.setenv("WEB_PORT", "9000")
+    assert settings_module.load().web_port == 9000
+
+    monkeypatch.setenv("WEB_PORT", "not a port")
+    assert settings_module.load().web_port == settings_module.DEFAULT_WEB_PORT
+
+
 def test_no_token_means_no_home_assistant(tmp_path, monkeypatch):
     monkeypatch.setattr(settings_module, "OPTIONS_PATH", tmp_path / "missing.json")
     monkeypatch.delenv("SUPERVISOR_TOKEN", raising=False)
@@ -42,3 +59,13 @@ def test_no_token_means_no_home_assistant(tmp_path, monkeypatch):
     monkeypatch.delenv("VESTABOARD_API_TOKEN", raising=False)
 
     assert not settings_module.load().has_hass
+
+
+def test_the_manifest_proxies_the_port_the_gallery_listens_on():
+    # Supervisor proxies ingress_port and nothing else, so a change to one of
+    # these without the other leaves the gallery unreachable.
+    manifest = CONFIG.read_text()
+    port = re.search(r"^ingress_port:\s*(\d+)", manifest, re.M)
+
+    assert re.search(r"^ingress:\s*true", manifest, re.M)
+    assert port and int(port.group(1)) == settings_module.DEFAULT_WEB_PORT

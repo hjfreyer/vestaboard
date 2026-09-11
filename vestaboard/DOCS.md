@@ -18,6 +18,12 @@ The app used to talk to the older Read/Write API and called this option
 `read_write_key`. If you are updating from that version, the old value is gone:
 create a Cloud API token in the web app and paste it into `api_token`.
 
+## The gallery
+
+Press **Open Web UI** above to see every piece of art the app can put on the
+board, each drawn chip for chip and labeled with the name to ask for it by.
+**Show in sidebar** on this page puts it a click away.
+
 ## Actions
 
 The app listens for events, so an automation can put something on the board.
@@ -49,8 +55,9 @@ actions:
 ```
 
 The names are the keys of `ARTWORKS` in `vestaboard_ha/art.py`: `sunset`,
-`heart`, `rainbow`, `invader`, `mountain`, `flower`, `party`. An unknown name is
-logged as an error and leaves the board alone.
+`heart`, `rainbow`, `invader`, `mountain`, `flower`, `party`, and the gallery
+lists them with the art next to each one. An unknown name is logged as an error
+and leaves the board alone.
 
 ## Changing what gets sent
 

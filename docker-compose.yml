@@ -8,6 +8,10 @@ services:
   vestaboard:
     build: ./vestaboard
     restart: unless-stopped
+    # The art gallery. Under the app store this is ingress and not published at
+    # all; here there is no ingress, so reach it at http://localhost:8099/.
+    ports:
+      - "${WEB_PORT:-8099}:8099"
     environment:
       VESTABOARD_API_TOKEN: ${VESTABOARD_API_TOKEN}
       HASS_URL: ${HASS_URL:-http://homeassistant.local:8123}

@@ -22,6 +22,10 @@ OPTIONS_PATH = Path("/data/options.json")
 SUPERVISOR_REST = "http://supervisor/core/api"
 SUPERVISOR_WS = "ws://supervisor/core/websocket"
 
+# Where the art gallery listens. Not an option: Supervisor only proxies the
+# port named as ``ingress_port`` in config.yaml, so the two have to agree.
+DEFAULT_WEB_PORT = 8099
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -31,6 +35,7 @@ class Settings:
     hass_token: str
     log_level: str = "info"
     dry_run: bool = False
+    web_port: int = DEFAULT_WEB_PORT
 
     @property
     def has_hass(self) -> bool:
@@ -42,6 +47,11 @@ def _load_options() -> dict:
         return {}
     with OPTIONS_PATH.open() as fh:
         return json.load(fh)
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    return int(raw) if raw.isdigit() else default
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -73,4 +83,5 @@ def load() -> Settings:
         hass_token=hass_token,
         log_level=os.environ.get("LOG_LEVEL", options.get("log_level", "info")),
         dry_run=_env_bool("DRY_RUN", bool(options.get("dry_run", False))),
+        web_port=_env_int("WEB_PORT", DEFAULT_WEB_PORT),
     )
