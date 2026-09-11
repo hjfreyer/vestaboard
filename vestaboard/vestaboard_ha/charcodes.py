@@ -2,10 +2,6 @@
 
 Only needed when you want to place characters exactly; ``Vestaboard.send_text``
 lets the board lay text out for you.
-
-NOTE: the punctuation and colour codes below are taken from community
-documentation and have not been checked against a physical board. Verify the
-ones you actually use before relying on them.
 """
 
 from __future__ import annotations
