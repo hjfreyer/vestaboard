@@ -12,6 +12,10 @@ services:
     # all; here there is no ingress, so reach it at http://localhost:8099/.
     ports:
       - "${WEB_PORT:-8099}:8099"
+    # Captured art lives in /data, which under the app store is storage
+    # Supervisor keeps. Here it is a directory next to this file.
+    volumes:
+      - ./data:/data
     environment:
       VESTABOARD_API_TOKEN: ${VESTABOARD_API_TOKEN}
       HASS_URL: ${HASS_URL:-http://homeassistant.local:8123}

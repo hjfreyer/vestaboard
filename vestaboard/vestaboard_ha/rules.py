@@ -3,8 +3,8 @@
 Each rule is an async function taking a Context, which gives you:
 
     ctx.board.send_text("HELLO")            # let the board lay it out
-    ctx.board.send_lines(["HELLO", "YOU"])  # exact placement, 6 lines x 22 cols
-    ctx.board.send_characters(art.grid())   # a grid of character codes
+    ctx.board.send_lines(["HELLO", "YOU"])  # exact placement, 3 lines x 15 cols
+    ctx.board.send_characters(ctx.art.grid())   # a piece of art, or a grid
     await ctx.hass.get_state("sensor.x")    # read Home Assistant
     await ctx.hass.call_service("light", "turn_on", entity_id="light.y")
 
@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import art
 from .app import Context
 from .registry import on_action, on_state
 
@@ -29,11 +28,12 @@ from .registry import on_action, on_state
 async def show_art(ctx: Context, data: dict[str, Any]) -> None:
     """Fire ``vestaboard_show_art`` in Home Assistant to put art on the board.
 
-    With no ``event_data``, a random piece from ``art.py``; with
-    ``name: heart``, that one. An automation on a half-hourly time pattern is
-    what makes it a rotation -- see the README.
+    With no ``event_data``, a random piece; with ``name: heart``, that one. The
+    pieces are the ones in ``art.py`` and the ones captured into the gallery.
+    An automation on a half-hourly time pattern is what makes it a rotation --
+    see the README.
     """
-    await ctx.board.send_characters(art.grid(data.get("name")))
+    await ctx.board.send_characters(ctx.art.grid(data.get("name")))
 
 
 @on_state("counter.eggs")

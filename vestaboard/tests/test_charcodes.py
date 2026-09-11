@@ -26,13 +26,13 @@ def test_unsupported_character_is_rejected():
 
 def test_encode_lines_centers_and_pads():
     grid = charcodes.encode_lines(["HI"])
+    offset = (charcodes.COLS - 2) // 2
 
     assert len(grid) == charcodes.ROWS
     assert all(len(row) == charcodes.COLS for row in grid)
-    # 22 columns, 2 characters, so 10 blanks then H I.
-    assert grid[0][10] == charcodes.encode_char("H")
-    assert grid[0][11] == charcodes.encode_char("I")
-    assert grid[0][9] == charcodes.BLANK
+    assert grid[0][offset] == charcodes.encode_char("H")
+    assert grid[0][offset + 1] == charcodes.encode_char("I")
+    assert grid[0][offset - 1] == charcodes.BLANK
     assert grid[1] == [charcodes.BLANK] * charcodes.COLS
 
 
@@ -43,6 +43,6 @@ def test_encode_lines_left_aligns_when_asked():
 
 def test_oversized_input_is_rejected():
     with pytest.raises(ValueError):
-        charcodes.encode_lines(["X" * 23])
+        charcodes.encode_lines(["X" * (charcodes.COLS + 1)])
     with pytest.raises(ValueError):
-        charcodes.encode_lines(["X"] * 7)
+        charcodes.encode_lines(["X"] * (charcodes.ROWS + 1))

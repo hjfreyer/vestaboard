@@ -16,7 +16,11 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-OPTIONS_PATH = Path("/data/options.json")
+#: Supervisor keeps /data across restarts and updates, and it is the only
+#: directory that survives either, so saved art goes in it.
+DATA_DIR = Path("/data")
+OPTIONS_PATH = DATA_DIR / "options.json"
+DEFAULT_ART_DIR = DATA_DIR / "art"
 
 # Supervisor proxies the Home Assistant API for apps that ask for it.
 SUPERVISOR_REST = "http://supervisor/core/api"
@@ -36,6 +40,7 @@ class Settings:
     log_level: str = "info"
     dry_run: bool = False
     web_port: int = DEFAULT_WEB_PORT
+    art_dir: Path = DEFAULT_ART_DIR
 
     @property
     def has_hass(self) -> bool:
@@ -84,4 +89,5 @@ def load() -> Settings:
         log_level=os.environ.get("LOG_LEVEL", options.get("log_level", "info")),
         dry_run=_env_bool("DRY_RUN", bool(options.get("dry_run", False))),
         web_port=_env_int("WEB_PORT", DEFAULT_WEB_PORT),
+        art_dir=Path(os.environ.get("ART_DIR") or DEFAULT_ART_DIR),
     )

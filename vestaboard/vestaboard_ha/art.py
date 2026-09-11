@@ -1,7 +1,6 @@
 """Pixel art for the board.
 
-Each artwork is 15 chips wide and 3 rows tall, written inline so the source
-shows the piece:
+Each artwork is written inline so the source shows the piece:
 
     "flower": '''
 ⬛⬛⬛⬛⬛🟪🟪🟪🟪🟪⬛⬛⬛⬛⬛
@@ -15,20 +14,21 @@ a space and then the character -- `` P A R T Y`` is five chips, not ten, and a
 bare ``PARTY`` is an error. Two spaces are therefore a blank chip, and since
 short lines are padded out on the right, trailing blanks can be left off.
 
-``to_grid`` centers the block on the board's 6x22 grid.
+A piece is as wide as its widest line and as tall as its line count, up to the
+board's own 15x3, and ``to_grid`` centers it there. A full-size piece -- which
+the ones here are, and which a piece captured off the board always is -- lands
+on the board exactly as written; a smaller one is centered.
+
+``render`` goes the other way, turning a grid back into text to save.
 """
 
 from __future__ import annotations
 
 import logging
-import random
 
 from . import charcodes
 
 _LOGGER = logging.getLogger(__name__)
-
-WIDTH = 15
-HEIGHT = 3
 
 #: Some sources paste the squares with a variation selector attached.
 VARIATION_SELECTOR = "\ufe0f"
@@ -121,51 +121,62 @@ def cells(line: str) -> list[str]:
         else:
             raise ValueError(_why_not(char))
 
-    if len(chips) > WIDTH:
-        raise ValueError(f"{line!r} is {len(chips)} chips, wider than {WIDTH}")
+    if len(chips) > charcodes.COLS:
+        raise ValueError(
+            f"{line!r} is {len(chips)} chips, wider than the board's {charcodes.COLS}"
+        )
     return chips
 
 
 def rows(art: str) -> list[list[str]]:
-    """The artwork's three rows, each padded out to 15 chips."""
+    """The artwork's rows, each padded out to the width of the widest one."""
     # Drop the newline after the opening quotes and the one before the closing
     # quotes, and nothing else: a blank top or bottom row is part of the art.
     body = art.removeprefix("\n").removesuffix("\n")
     lines = body.split("\n")
-    if len(lines) != HEIGHT:
-        raise ValueError(f"artwork has {len(lines)} rows, expected {HEIGHT}")
+    if len(lines) > charcodes.ROWS:
+        raise ValueError(
+            f"artwork has {len(lines)} rows, more than the board's {charcodes.ROWS}"
+        )
 
-    return [chips + [" "] * (WIDTH - len(chips)) for chips in map(cells, lines)]
+    rows_of_chips = [cells(line) for line in lines]
+    width = max(len(chips) for chips in rows_of_chips)
+    return [chips + [" "] * (width - len(chips)) for chips in rows_of_chips]
 
 
 def to_grid(art: str) -> list[list[int]]:
-    """Center an artwork on a 6x22 grid of character codes."""
-    top = (charcodes.ROWS - HEIGHT) // 2
-    left = (charcodes.COLS - WIDTH) // 2
+    """Center an artwork on the board's grid of character codes."""
+    chips = rows(art)
+    top = (charcodes.ROWS - len(chips)) // 2
+    left = (charcodes.COLS - len(chips[0])) // 2
 
     grid = charcodes.blank_grid()
-    for row, chips in enumerate(rows(art)):
-        for col, chip in enumerate(chips):
+    for row, line in enumerate(chips):
+        for col, chip in enumerate(line):
             grid[top + row][left + col] = encode_chip(chip)
     return grid
 
 
-_last_shown: str | None = None
+#: The squares by code, for writing a grid back out. ⬛ is first in the palette,
+#: so a blank chip comes back as ⬛ rather than as two spaces.
+SQUARES: dict[int, str] = {code: square for square, code in PALETTE.items()}
 
 
-def grid(name: str | None = None) -> list[list[int]]:
-    """Encode the named artwork, or a random one when the name is None."""
-    global _last_shown
+def render_chip(code: int) -> str:
+    """The two columns one character code is written as."""
+    if code in SQUARES:
+        return SQUARES[code]
 
-    if name is None:
-        # Never twice in a row: a board that changes every half hour should
-        # look like it changed.
-        choices = [other for other in ARTWORKS if other != _last_shown]
-        name = random.choice(choices or list(ARTWORKS))
-    elif name not in ARTWORKS:
-        known = ", ".join(sorted(ARTWORKS))
-        raise ValueError(f"no artwork named {name!r}; there is {known}")
+    char = charcodes.CODE_TO_CHAR.get(code)
+    if char is not None and char != " ":
+        return f" {char}"
 
-    _last_shown = name
-    _LOGGER.info("showing %s", name)
-    return to_grid(ARTWORKS[name])
+    # A black chip, or a code with no square and no character. The board shows
+    # both as an unlit chip, and that is what we have to write.
+    _LOGGER.warning("no square for character code %d, writing a blank chip", code)
+    return "⬛"
+
+
+def render(grid: list[list[int]]) -> str:
+    """A grid of character codes as text, in the form ``rows`` reads back."""
+    return "".join("".join(map(render_chip, row)) + "\n" for row in grid)

@@ -3,11 +3,11 @@ import pytest
 from vestaboard_ha import art, charcodes
 
 
-def test_every_artwork_is_the_right_shape_and_encodes():
+def test_every_shipped_artwork_is_15x3_and_encodes():
     for name, piece in art.ARTWORKS.items():
         chips = art.rows(piece)
-        assert len(chips) == art.HEIGHT, name
-        assert all(len(row) == art.WIDTH for row in chips), name
+        assert len(chips) == 3, name
+        assert all(len(row) == 15 for row in chips), name
 
         grid = art.to_grid(piece)
         assert len(grid) == charcodes.ROWS, name
@@ -41,31 +41,64 @@ def test_a_pasted_variation_selector_is_tolerated():
     assert art.cells("⬛️⬜️") == ["⬛", "⬜"]
 
 
-def test_wrong_shape_is_rejected():
+def test_a_piece_bigger_than_the_board_is_rejected():
     with pytest.raises(ValueError, match="rows"):
-        art.rows("\n🟥\n🟩\n")
+        art.rows("\n" + "🟥\n" * (charcodes.ROWS + 1))
     with pytest.raises(ValueError, match="wider"):
-        art.rows("\n" + "🟥" * 16 + "\n🟩\n🟦\n")
+        art.rows("\n" + "🟥" * (charcodes.COLS + 1) + "\n🟩\n🟦\n")
 
 
-def test_short_and_blank_rows_are_padded_out():
-    assert art.rows("\n🟥\n\n\n") == [
-        ["🟥"] + [" "] * 14,
-        [" "] * 15,
-        [" "] * 15,
+def test_short_and_blank_rows_are_padded_out_to_the_widest():
+    assert art.rows("\n🟥🟥🟥\n🟥\n\n") == [
+        ["🟥", "🟥", "🟥"],
+        ["🟥", " ", " "],
+        [" ", " ", " "],
     ]
 
 
-def test_the_block_is_centered_on_the_board():
-    grid = art.to_grid("\n" + "🟥" * 15 + "\n\n\n")
+def test_a_whole_board_is_centered_on_itself():
+    # What a capture is: the whole board, which centering leaves exactly alone.
+    captured = charcodes.blank_grid()
+    captured[0][0] = charcodes.RED
+    captured[-1][-1] = charcodes.BLUE
 
-    # 3 rows of 15 on a 6x22 board: one blank row above, three blank columns
-    # to the left.
+    assert art.to_grid(art.render(captured)) == captured
+
+
+def test_a_grid_renders_back_to_the_text_it_came_from():
+    for piece in art.ARTWORKS.values():
+        assert art.to_grid(art.render(art.to_grid(piece))) == art.to_grid(piece)
+
+    grid = charcodes.encode_lines(["HI & 5"])
+    text = art.render(grid)
+
+    # A blank chip between characters is ⬛, the same square as anywhere else.
+    assert " H I⬛ &⬛ 5" in text
+    assert art.to_grid(text) == grid
+
+
+def test_a_code_with_no_square_and_no_character_renders_blank(caplog):
+    assert art.render_chip(charcodes.BLACK) == "⬛"
+    assert art.render_chip(charcodes.FILLED) == "⬛"
+    assert "no square" in caplog.text
+
+
+def test_a_full_size_piece_lands_exactly_as_written():
+    grid = art.to_grid("\n" + "🟥" * charcodes.COLS + "\n\n\n")
+
+    assert grid[0] == [charcodes.RED] * charcodes.COLS
+    assert grid[1] == [charcodes.BLANK] * charcodes.COLS
+
+
+def test_a_smaller_piece_is_centered():
+    grid = art.to_grid("\n🟥🟥🟥\n")
+
+    # 3 chips on a 15-chip row: six blanks either side, and the single row in
+    # the middle one of three.
     assert grid[0] == [charcodes.BLANK] * charcodes.COLS
-    assert grid[1][2] == charcodes.BLANK
-    assert grid[1][3] == charcodes.RED
-    assert grid[1][17] == charcodes.RED
-    assert grid[1][18] == charcodes.BLANK
+    assert grid[1][5] == charcodes.BLANK
+    assert grid[1][6:9] == [charcodes.RED] * 3
+    assert grid[1][9] == charcodes.BLANK
 
 
 def test_squares_and_characters_both_encode():
@@ -78,27 +111,8 @@ def test_squares_and_characters_both_encode():
 
 
 def test_text_and_art_share_a_piece():
-    middle = art.to_grid(art.ARTWORKS["party"])[2]
+    grid = art.to_grid(art.ARTWORKS["party"])
     word = [charcodes.encode_char(c) for c in "PARTY!"]
 
-    assert charcodes.RED in art.to_grid(art.ARTWORKS["party"])[1]
-    assert word == [code for code in middle if code != charcodes.BLANK]
-
-
-def test_a_named_artwork_comes_back(monkeypatch):
-    monkeypatch.setattr(art, "_last_shown", None)
-    assert art.grid("heart") == art.to_grid(art.ARTWORKS["heart"])
-
-
-def test_an_unknown_name_is_rejected():
-    with pytest.raises(ValueError):
-        art.grid("nonesuch")
-
-
-def test_random_art_never_repeats_itself(monkeypatch):
-    monkeypatch.setattr(art, "_last_shown", None)
-
-    seen = [art.grid() for _ in range(20)]
-
-    assert all(a != b for a, b in zip(seen[:-1], seen[1:], strict=True))
-    assert len({tuple(map(tuple, g)) for g in seen}) > 1
+    assert charcodes.RED in grid[0]
+    assert word == [code for code in grid[1] if code != charcodes.BLANK]

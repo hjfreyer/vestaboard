@@ -4,15 +4,48 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 from vestaboard_ha import art, web
+from vestaboard_ha.board import BoardError
+from vestaboard_ha.library import Library
 
-CHIPS_PER_PIECE = art.WIDTH * art.HEIGHT
+#: The shipped pieces are all 15 chips by 3.
+CHIPS_PER_PIECE = 15 * 3
 
 
-async def get_page(path="/"):
-    client = TestClient(TestServer(web.build_app()))
+class FakeBoard:
+    """A board with something on it, or one that will not say what."""
+
+    def __init__(self, grid=None, error=None):
+        self.grid = grid
+        self.error = error
+
+    async def read(self):
+        if self.error is not None:
+            raise self.error
+        return self.grid
+
+
+class FakeContext:
+    def __init__(self, tmp_path, board=None):
+        self.art = Library(tmp_path)
+        self.board = board or FakeBoard()
+
+
+async def get_page(ctx, path="/"):
+    """GET the gallery, following the redirect a capture answers with."""
+    client = TestClient(TestServer(web.build_app(ctx)))
     await client.start_server()
     try:
         response = await client.get(path)
+        return response, await response.text()
+    finally:
+        await client.close()
+
+
+async def post_capture(ctx):
+    client = TestClient(TestServer(web.build_app(ctx)))
+    await client.start_server()
+    try:
+        response = await client.post("/")
         return response, await response.text()
     finally:
         await client.close()
@@ -35,10 +68,11 @@ def test_every_piece_gets_a_card_and_all_of_its_chips():
 
 
 def test_a_short_line_is_padded_out_with_unlit_flaps():
-    html = web.page({"corner": "\n🟥\n\n\n"})
+    html = web.page({"corner": "\n🟥🟥🟥\n🟥\n\n"})
 
-    assert html.count('class="chip') == CHIPS_PER_PIECE
-    assert html.count('<span class="chip"></span>') == CHIPS_PER_PIECE - 1
+    # Three rows of the widest line's three chips, all but two of them unlit.
+    assert html.count('class="chip') == 9
+    assert html.count('<span class="chip"></span>') == 5
 
 
 def test_cards_keep_the_order_art_py_has_them_in():
@@ -56,10 +90,11 @@ def test_colors_and_characters_both_show_up():
 
 
 def test_a_piece_that_no_longer_encodes_says_so():
-    html = web.page({"good": art.ARTWORKS["heart"], "broken": "\n🟥\n🟩\n"})
+    taller_than_the_board = "\n" + "🟥\n" * 7
+    html = web.page({"good": art.ARTWORKS["heart"], "broken": taller_than_the_board})
 
     assert "does not encode" in html
-    assert "rows" in html
+    assert "7 rows" in html
     # The rest of the gallery is still there.
     assert html.count('class="chip') == CHIPS_PER_PIECE
 
@@ -93,8 +128,8 @@ def test_the_page_has_no_urls_to_rewrite():
 
 
 @pytest.mark.asyncio
-async def test_the_gallery_is_served_as_html():
-    response, body = await get_page()
+async def test_the_gallery_is_served_as_html(tmp_path):
+    response, body = await get_page(FakeContext(tmp_path))
 
     assert response.status == 200
     assert response.content_type == "text/html"
@@ -103,27 +138,27 @@ async def test_the_gallery_is_served_as_html():
 
 
 @pytest.mark.asyncio
-async def test_the_page_follows_art_py(monkeypatch):
+async def test_the_page_follows_art_py(tmp_path, monkeypatch):
     monkeypatch.setattr(art, "ARTWORKS", {"newcomer": art.ARTWORKS["heart"]})
 
-    _, body = await get_page()
+    _, body = await get_page(FakeContext(tmp_path))
 
     assert "newcomer" in body
     assert "sunset" not in body
 
 
 @pytest.mark.asyncio
-async def test_anything_else_is_a_404():
-    response, _ = await get_page("/nope")
+async def test_anything_else_is_a_404(tmp_path):
+    response, _ = await get_page(FakeContext(tmp_path), "/nope")
 
     assert response.status == 404
 
 
 @pytest.mark.asyncio
-async def test_serve_listens_and_stops():
+async def test_serve_listens_and_stops(tmp_path):
     port = free_port()
 
-    runner = await web.serve(port)
+    runner = await web.serve(FakeContext(tmp_path), port)
 
     assert runner is not None
     try:
@@ -134,13 +169,126 @@ async def test_serve_listens_and_stops():
 
 
 @pytest.mark.asyncio
-async def test_a_port_we_cannot_have_is_logged_not_raised(caplog):
+async def test_a_port_we_cannot_have_is_logged_not_raised(tmp_path, caplog):
     port = free_port()
-    first = await web.serve(port)
+    first = await web.serve(FakeContext(tmp_path), port)
     assert first is not None
 
     try:
-        assert await web.serve(port) is None
+        assert await web.serve(FakeContext(tmp_path), port) is None
         assert "could not listen" in caplog.text
     finally:
         await first.cleanup()
+
+
+def test_the_header_offers_to_capture_the_board():
+    html = web.page(art.ARTWORKS)
+
+    assert '<form method="post">' in html
+    assert "Capture the board" in html
+
+
+def test_saved_pieces_are_marked_as_saved():
+    html = web.page({"heart": art.ARTWORKS["heart"]}, saved={"heart"})
+
+    assert '<span class="tag">saved</span>' in html
+    assert web.page({"heart": art.ARTWORKS["heart"]}).count('class="tag"') == 0
+
+
+def test_a_notice_is_shown_and_escaped():
+    assert '<p class="notice">Captured as x.</p>' in web.page({}, notice="Captured as x.")
+    assert '<p class="notice bad">' in web.page({}, notice="Nope", bad_news=True)
+    assert "&lt;script&gt;" in web.page({}, notice="<script>")
+
+
+@pytest.mark.asyncio
+async def test_a_saved_piece_shows_up_in_the_gallery(tmp_path):
+    ctx = FakeContext(tmp_path)
+    ctx.art.capture(art.to_grid(art.ARTWORKS["invader"]))
+
+    _, body = await get_page(ctx)
+
+    assert ">capture-1<" in body
+    assert body.count('<span class="tag">saved</span>') == 1
+
+
+@pytest.mark.asyncio
+async def test_capture_saves_the_board_and_says_where(tmp_path):
+    grid = art.to_grid(art.ARTWORKS["flower"])
+    ctx = FakeContext(tmp_path, FakeBoard(grid))
+
+    response, _ = await post_capture(ctx)
+
+    assert ctx.art.saved() == {"capture-1": art.render(grid)}
+    # Posting again would capture again, so the answer is a redirect.
+    assert response.status == 200
+    assert response.history[0].status == 303
+    assert response.history[0].headers["Location"] == "/?saved=capture-1"
+
+
+@pytest.mark.asyncio
+async def test_the_page_after_a_capture_names_the_piece(tmp_path):
+    ctx = FakeContext(tmp_path, FakeBoard(art.to_grid(art.ARTWORKS["flower"])))
+    await post_capture(ctx)
+
+    _, body = await get_page(ctx, "/?saved=capture-1")
+
+    assert "Captured as capture-1" in body
+
+
+@pytest.mark.asyncio
+async def test_capturing_the_same_board_again_says_so(tmp_path):
+    ctx = FakeContext(tmp_path, FakeBoard(art.to_grid(art.ARTWORKS["flower"])))
+    await post_capture(ctx)
+
+    response, _ = await post_capture(ctx)
+    _, body = await get_page(ctx, "/?again=capture-1")
+
+    assert response.history[0].headers["Location"] == "/?again=capture-1"
+    assert "already saved as capture-1" in body
+
+
+@pytest.mark.asyncio
+async def test_a_name_that_is_not_ours_says_nothing(tmp_path):
+    _, body = await get_page(FakeContext(tmp_path), "/?saved=%3Cscript%3E")
+
+    assert '<p class="notice' not in body
+    assert "script" not in body
+
+
+@pytest.mark.asyncio
+async def test_a_board_that_cannot_be_read_says_why(tmp_path):
+    ctx = FakeContext(tmp_path, FakeBoard(error=BoardError("no API token configured")))
+
+    response, body = await post_capture(ctx)
+
+    assert response.status == 200
+    assert response.history == ()
+    assert "Could not capture the board: no API token configured" in body
+    assert '<p class="notice bad">' in body
+
+
+@pytest.mark.asyncio
+async def test_a_blank_board_is_not_captured(tmp_path):
+    from vestaboard_ha import charcodes
+
+    ctx = FakeContext(tmp_path, FakeBoard(charcodes.blank_grid()))
+
+    _, body = await post_capture(ctx)
+
+    assert "nothing to capture" in body
+    assert ctx.art.saved() == {}
+
+
+def test_the_redirect_goes_back_through_ingress():
+    class FakeRequest:
+        def __init__(self, path):
+            self.headers = {web.INGRESS_PATH_HEADER: path} if path else {}
+
+    assert web._base_path(FakeRequest("/api/hassio_ingress/abc123/")) == (
+        "/api/hassio_ingress/abc123"
+    )
+    assert web._base_path(FakeRequest("")) == ""
+    # Nothing that would send the browser somewhere else entirely.
+    assert web._base_path(FakeRequest("//elsewhere.example")) == ""
+    assert web._base_path(FakeRequest("https://elsewhere.example")) == ""

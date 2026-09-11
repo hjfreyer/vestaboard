@@ -1,8 +1,7 @@
 """The art gallery: every piece in ``art.py``, drawn chip for chip.
 
-A piece is the 15x3 block, and that is what a card shows. The board centers it
-on 6x22 when it is sent, but that surround is the same for every piece and
-would be three quarters of every card here.
+A card shows the piece itself, at the size it is written: the board's own 15x3
+for a full-size piece or a capture, less for a smaller one.
 
 Home Assistant serves this page itself, through ingress, so the app appears in
 the sidebar with an **Open Web UI** button and nothing is exposed to the network
@@ -12,21 +11,37 @@ having no URLs at all: one route, and the stylesheet inline.
 
 Outside Home Assistant the same page is on ``ingress_port`` directly, which is
 what ``docker-compose.yml`` publishes.
+
+The Capture button posts back to this same path -- ingress rewrites it per
+session, so a form with no action of its own is the one that always lands in
+the right place -- and the redirect afterwards is built from the path ingress
+tells us it is serving us at.
 """
 
 from __future__ import annotations
 
 import html
 import logging
+from collections.abc import Container, Mapping
+from typing import Any
+from urllib.parse import urlencode
 
 from aiohttp import web
 
 from . import art, charcodes
+from .board import BoardError
+from .library import Library
 
 _LOGGER = logging.getLogger(__name__)
 
 #: Ingress reaches us inside the container, so bind everywhere.
 HOST = "0.0.0.0"
+
+#: What ingress calls the path it is serving us at, so a redirect can say it.
+INGRESS_PATH_HEADER = "X-Ingress-Path"
+
+#: The context the handlers work from, kept on the aiohttp application.
+CONTEXT = web.AppKey("context")
 
 #: A colored chip is a class; everything else is a character on a dark flap.
 #: A black chip has no entry and so lands on that dark flap, which is what a
@@ -55,6 +70,8 @@ STYLE = """
   --flap: #191a1f;
   --flap-ink: #ede8dc;
   --seam: rgba(0, 0, 0, .45);
+  --ok: #2f8f52;
+  --bad: #c4443f;
   --red: #d63a3f;
   --orange: #e8792a;
   --yellow: #edc02f;
@@ -89,11 +106,44 @@ body {
   border-bottom: 1px solid var(--edge);
   padding: 14px 16px;
 }
+.top .inner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+.titles { flex: 1 1 260px; }
 .top h1 {
   margin: 0;
   font-size: 17px;
   letter-spacing: .01em;
 }
+button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--page);
+  background: var(--ink);
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 14px;
+  cursor: pointer;
+}
+button:hover { opacity: .87; }
+button:active { transform: translateY(1px); }
+button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.notice {
+  max-width: 720px;
+  margin: 16px auto -4px;
+  padding: 10px 12px;
+  border: 1px solid var(--edge);
+  border-left: 3px solid var(--ok);
+  border-radius: 8px;
+  background: var(--card);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.notice.bad { border-left-color: var(--bad); }
 .top p {
   margin: 4px 0 0;
   color: var(--muted);
@@ -121,6 +171,9 @@ code {
   padding: 14px;
 }
 .name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 13px;
@@ -129,10 +182,19 @@ code {
   text-transform: uppercase;
   color: var(--muted);
 }
+/* Which pieces are files, and so can be renamed or deleted. */
+.tag {
+  padding: 2px 7px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: .1em;
+}
 .board {
   container-type: inline-size;
   display: grid;
-  grid-template-columns: repeat(15, 1fr);
+  grid-template-columns: repeat(var(--cols), 1fr);
   gap: .5%;
   background: var(--case);
   border-radius: 8px;
@@ -151,7 +213,7 @@ code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-weight: 600;
   font-size: clamp(8px, 2.4vw, 19px);
-  font-size: 4.2cqw;
+  font-size: calc(63cqw / var(--cols));
   line-height: 1;
 }
 /* The hinge a split-flap turns on. */
@@ -198,17 +260,20 @@ def chip(code: int) -> str:
 
 
 def board(artwork: str, label: str) -> str:
-    """An artwork's chips, encoded exactly as they are when the board gets them."""
-    chips = "".join(
-        chip(art.encode_chip(cell)) for row in art.rows(artwork) for cell in row
-    )
+    """An artwork's chips, encoded exactly as they are when the board gets them.
+
+    A piece is as wide as it is -- the board's 15 chips for a full-size piece,
+    fewer for a smaller one -- and the card scales to fit it.
+    """
+    rows = art.rows(artwork)
+    chips = "".join(chip(art.encode_chip(cell)) for row in rows for cell in row)
     return (
-        f'<div class="board" role="img" aria-label="{html.escape(label)}">'
-        f"{chips}</div>"
+        f'<div class="board" role="img" style="--cols: {len(rows[0])}" '
+        f'aria-label="{html.escape(label)}">{chips}</div>'
     )
 
 
-def piece(name: str, artwork: str) -> str:
+def piece(name: str, artwork: str, *, saved: bool = False) -> str:
     """One card. A piece that no longer encodes says so instead of vanishing."""
     try:
         body = board(artwork, f"the {name} artwork")
@@ -218,14 +283,21 @@ def piece(name: str, artwork: str) -> str:
             '<p class="broken">This piece does not encode: '
             f"{html.escape(str(exc))}</p>"
         )
+    tag = '<span class="tag">saved</span>' if saved else ""
     return (
         '<article class="piece">'
-        f'<h2 class="name">{html.escape(name)}</h2>{body}</article>'
+        f'<h2 class="name">{html.escape(name)}{tag}</h2>{body}</article>'
     )
 
 
-def page(artworks: dict[str, str]) -> str:
-    """The whole gallery, one card per piece, in the order ``art.py`` has them."""
+def page(
+    artworks: dict[str, str],
+    *,
+    saved: Container[str] = (),
+    notice: str = "",
+    bad_news: bool = False,
+) -> str:
+    """The whole gallery, one card per piece, built-in pieces first."""
     if artworks:
         count = len(artworks)
         summary = (
@@ -233,10 +305,18 @@ def page(artworks: dict[str, str]) -> str:
             "<code>vestaboard_show_art</code> for a random one, or name a piece "
             "in <code>event_data</code> to ask for it."
         )
-        cards = "".join(piece(name, artwork) for name, artwork in artworks.items())
+        cards = "".join(
+            piece(name, artwork, saved=name in saved)
+            for name, artwork in artworks.items()
+        )
     else:
         summary = "Nothing in <code>ARTWORKS</code> yet."
         cards = '<p class="empty">Add a piece to <code>art.py</code> and restart.</p>'
+
+    banner = ""
+    if notice:
+        bad = " bad" if bad_news else ""
+        banner = f'<p class="notice{bad}">{html.escape(notice)}</p>'
 
     return f"""<!doctype html>
 <html lang="en">
@@ -249,33 +329,91 @@ def page(artworks: dict[str, str]) -> str:
 </head>
 <body>
 <header class="top"><div class="inner">
+<div class="titles">
 <h1>Art gallery</h1>
 <p>{summary}</p>
+</div>
+<form method="post"><button type="submit">Capture the board</button></form>
 </div></header>
+{banner}
 <main class="gallery">{cards}</main>
 </body>
 </html>
 """
 
 
-async def gallery(request: web.Request) -> web.Response:
-    """Rendered per request, so a restart is all an edit to ``art.py`` needs."""
+def show(library: Library, notice: str = "", *, bad_news: bool = False) -> web.Response:
+    """The gallery as it stands. Read afresh, so a saved file shows up at once."""
     return web.Response(
-        text=page(art.ARTWORKS),
+        text=page(
+            library.pieces(),
+            saved=library.saved(),
+            notice=notice,
+            bad_news=bad_news,
+        ),
         content_type="text/html",
         headers={"Cache-Control": "no-store"},
     )
 
 
-def build_app() -> web.Application:
+def captured_notice(library: Library, query: Mapping[str, str]) -> str:
+    """What the redirect after a capture is telling us to say.
+
+    The name has been round the browser, so it only gets shown if it is really
+    a piece we have.
+    """
+    for key, said in (
+        ("saved", "Captured as {}. It is in the rotation now."),
+        ("again", "The board is already saved as {}."),
+    ):
+        name = query.get(key, "")
+        if name and name in library.saved():
+            return said.format(name)
+    return ""
+
+
+async def gallery(request: web.Request) -> web.Response:
+    """Rendered per request, so a restart is all an edit to ``art.py`` needs."""
+    library = request.app[CONTEXT].art
+    return show(library, captured_notice(library, request.query))
+
+
+async def capture(request: web.Request) -> web.Response:
+    """Save what is on the board right now as a new piece."""
+    ctx = request.app[CONTEXT]
+    try:
+        saved = ctx.art.capture(await ctx.board.read())
+    except (BoardError, ValueError, OSError) as exc:
+        _LOGGER.warning("could not capture the board: %s", exc)
+        return show(ctx.art, f"Could not capture the board: {exc}", bad_news=True)
+
+    # Redirect so that a reload does not capture all over again. The path is
+    # ingress's to choose, so it has to come from the request.
+    key = "saved" if saved.is_new else "again"
+    raise web.HTTPSeeOther(f"{_base_path(request)}/?{urlencode({key: saved.name})}")
+
+
+def _base_path(request: web.Request) -> str:
+    """The path the page is being served at, as far as the browser is concerned."""
+    path = request.headers.get(INGRESS_PATH_HEADER, "")
+    # Ingress sets this, but a redirect is worth being careful with: anything
+    # that is not a path of ours leaves us redirecting to our own root.
+    if not path.startswith("/") or path.startswith("//"):
+        return ""
+    return path.rstrip("/")
+
+
+def build_app(ctx: Any) -> web.Application:
     app = web.Application()
+    app[CONTEXT] = ctx
     app.router.add_get("/", gallery)
+    app.router.add_post("/", capture)
     return app
 
 
-async def serve(port: int) -> web.AppRunner | None:
+async def serve(ctx: Any, port: int) -> web.AppRunner | None:
     """Start the gallery. A port we cannot have is not worth the board over."""
-    runner = web.AppRunner(build_app(), access_log=None)
+    runner = web.AppRunner(build_app(ctx), access_log=None)
     await runner.setup()
     try:
         await web.TCPSite(runner, HOST, port).start()

@@ -24,6 +24,11 @@ Press **Open Web UI** above to see every piece of art the app can put on the
 board, each drawn chip for chip and labeled with the name to ask for it by.
 **Show in sidebar** on this page puts it a click away.
 
+**Capture the board** saves whatever the board is showing right now as a new
+piece, which joins the rotation immediately. Captures are files under
+`/data/art` in the app's own storage, so they survive restarts and updates; the
+gallery marks them `saved`. Capturing the same board twice keeps one copy.
+
 ## Actions
 
 The app listens for events, so an automation can put something on the board.
@@ -54,10 +59,10 @@ actions:
       name: heart
 ```
 
-The names are the keys of `ARTWORKS` in `vestaboard_ha/art.py`: `sunset`,
-`heart`, `rainbow`, `invader`, `mountain`, `flower`, `party`, and the gallery
-lists them with the art next to each one. An unknown name is logged as an error
-and leaves the board alone.
+The names are the keys of `ARTWORKS` in `vestaboard_ha/art.py` -- `sunset`,
+`heart`, `rainbow`, `invader`, `mountain`, `flower`, `party` -- plus anything
+captured or saved into `/data/art`. The gallery lists the lot with the art next
+to each name. An unknown name is logged as an error and leaves the board alone.
 
 ## Changing what gets sent
 
