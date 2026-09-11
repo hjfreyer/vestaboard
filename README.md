@@ -42,7 +42,7 @@ Update button is pressed.
 repository.yaml            marks this repo as an app repository
 vestaboard/                the app; also the Docker build context
   config.yaml              app manifest, including the version number
-  Dockerfile, build.yaml   how Supervisor builds it
+  Dockerfile               how Supervisor builds it
   vestaboard_ha/
     rules.py               >>> the file worth editing <<<
     app.py                 wires rules to the scheduler and the event stream

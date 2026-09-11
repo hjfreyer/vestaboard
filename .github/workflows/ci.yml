@@ -25,4 +25,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build the app image the way Supervisor will
-        run: docker build --build-arg BUILD_FROM=python:3.12-slim vestaboard
+        run: docker build vestaboard
