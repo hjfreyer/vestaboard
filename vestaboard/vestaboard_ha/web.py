@@ -21,7 +21,9 @@ tells us it is serving us at.
 from __future__ import annotations
 
 import html
+import json
 import logging
+import re
 from collections.abc import Container, Mapping
 from typing import Any
 from urllib.parse import urlencode
@@ -132,6 +134,23 @@ button {
 button:hover { opacity: .87; }
 button:active { transform: translateY(1px); }
 button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+/* Delete sits on a card and should not compete with the art. */
+.quiet {
+  padding: 4px 8px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+}
+.quiet:hover {
+  opacity: 1;
+  color: var(--bad);
+  border-color: var(--bad);
+}
+.remove { margin-left: auto; }
 .notice {
   max-width: 720px;
   margin: 16px auto -4px;
@@ -273,6 +292,20 @@ def board(artwork: str, label: str) -> str:
     )
 
 
+def delete_form(name: str) -> str:
+    """The Delete button on a saved piece, with an are-you-sure in front of it.
+
+    The confirm is the only script on the page, and the button works without
+    it: a browser that ignores it just deletes, which is what was asked for.
+    """
+    asking = html.escape(f"return confirm({json.dumps(f'Delete {name}?')})")
+    return (
+        f'<form method="post" class="remove" onsubmit="{asking}">'
+        f'<button name="delete" value="{html.escape(name)}" class="quiet">'
+        "Delete</button></form>"
+    )
+
+
 def piece(name: str, artwork: str, *, saved: bool = False) -> str:
     """One card. A piece that no longer encodes says so instead of vanishing."""
     try:
@@ -283,10 +316,12 @@ def piece(name: str, artwork: str, *, saved: bool = False) -> str:
             '<p class="broken">This piece does not encode: '
             f"{html.escape(str(exc))}</p>"
         )
-    tag = '<span class="tag">saved</span>' if saved else ""
+    # Only a saved piece can be deleted; the rest are in art.py.
+    label = html.escape(name) + ('<span class="tag">saved</span>' if saved else "")
     return (
         '<article class="piece">'
-        f'<h2 class="name">{html.escape(name)}{tag}</h2>{body}</article>'
+        f'<h2 class="name">{label}{delete_form(name) if saved else ""}</h2>'
+        f"{body}</article>"
     )
 
 
@@ -333,7 +368,7 @@ def page(
 <h1>Art gallery</h1>
 <p>{summary}</p>
 </div>
-<form method="post"><button type="submit">Capture the board</button></form>
+<form method="post"><button name="capture" value="board">Capture the board</button></form>
 </div></header>
 {banner}
 <main class="gallery">{cards}</main>
@@ -356,11 +391,16 @@ def show(library: Library, notice: str = "", *, bad_news: bool = False) -> web.R
     )
 
 
-def captured_notice(library: Library, query: Mapping[str, str]) -> str:
-    """What the redirect after a capture is telling us to say.
+#: What a piece can be called, for the names that come back off a redirect.
+PIECE_NAME = re.compile(r"[\w.-]{1,64}")
 
-    The name has been round the browser, so it only gets shown if it is really
-    a piece we have.
+
+def notice_for(library: Library, query: Mapping[str, str]) -> str:
+    """What the redirect after a button press is telling us to say.
+
+    The name has been round the browser: for a piece that should still be here
+    that means checking we have it, and for a deleted one, which we will not
+    find, that it is at least shaped like one of ours.
     """
     for key, said in (
         ("saved", "Captured as {}. It is in the rotation now."),
@@ -369,28 +409,54 @@ def captured_notice(library: Library, query: Mapping[str, str]) -> str:
         name = query.get(key, "")
         if name and name in library.saved():
             return said.format(name)
+
+    gone = query.get("deleted", "")
+    if gone and PIECE_NAME.fullmatch(gone) and gone not in library.saved():
+        return f"Deleted {gone}."
     return ""
 
 
 async def gallery(request: web.Request) -> web.Response:
     """Rendered per request, so a restart is all an edit to ``art.py`` needs."""
     library = request.app[CONTEXT].art
-    return show(library, captured_notice(library, request.query))
+    return show(library, notice_for(library, request.query))
 
 
-async def capture(request: web.Request) -> web.Response:
-    """Save what is on the board right now as a new piece."""
+async def posted(request: web.Request) -> web.Response:
+    """The buttons. Which one was pressed is in the form, not the path.
+
+    Both answer with a redirect, so that a reload does not press the button a
+    second time -- and to the path ingress is serving us at, which only the
+    request knows.
+    """
     ctx = request.app[CONTEXT]
+    form = await request.post()
+    if "delete" in form:
+        return await delete(request, ctx, str(form["delete"]))
+    return await capture(request, ctx)
+
+
+async def capture(request: web.Request, ctx: Any) -> web.Response:
+    """Save what is on the board right now as a new piece."""
     try:
         saved = ctx.art.capture(await ctx.board.read())
     except (BoardError, ValueError, OSError) as exc:
         _LOGGER.warning("could not capture the board: %s", exc)
         return show(ctx.art, f"Could not capture the board: {exc}", bad_news=True)
 
-    # Redirect so that a reload does not capture all over again. The path is
-    # ingress's to choose, so it has to come from the request.
     key = "saved" if saved.is_new else "again"
     raise web.HTTPSeeOther(f"{_base_path(request)}/?{urlencode({key: saved.name})}")
+
+
+async def delete(request: web.Request, ctx: Any, name: str) -> web.Response:
+    """Throw a saved piece away."""
+    try:
+        ctx.art.delete(name)
+    except (ValueError, OSError) as exc:
+        _LOGGER.warning("could not delete %s: %s", name, exc)
+        return show(ctx.art, f"Could not delete it: {exc}", bad_news=True)
+
+    raise web.HTTPSeeOther(f"{_base_path(request)}/?{urlencode({'deleted': name})}")
 
 
 def _base_path(request: web.Request) -> str:
@@ -407,7 +473,7 @@ def build_app(ctx: Any) -> web.Application:
     app = web.Application()
     app[CONTEXT] = ctx
     app.router.add_get("/", gallery)
-    app.router.add_post("/", capture)
+    app.router.add_post("/", posted)
     return app
 
 

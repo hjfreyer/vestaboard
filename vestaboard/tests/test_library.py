@@ -128,3 +128,39 @@ def test_a_blank_board_is_not_worth_capturing(library):
         library.capture(charcodes.blank_grid())
 
     assert not library.directory.exists()
+
+
+def test_deleting_a_saved_piece_takes_the_file_with_it(library):
+    write(library, "sunrise")
+
+    library.delete("sunrise")
+
+    assert library.saved() == {}
+    assert not (library.directory / "sunrise.txt").exists()
+
+
+def test_a_built_in_piece_has_no_file_to_delete(library):
+    with pytest.raises(ValueError, match="art.py"):
+        library.delete("rainbow")
+
+    assert "rainbow" in library.pieces()
+
+
+def test_deleting_what_is_not_there_says_so(library):
+    write(library, "sunrise")
+    library.delete("sunrise")
+
+    with pytest.raises(ValueError, match="no saved piece"):
+        library.delete("sunrise")
+    with pytest.raises(ValueError, match="no saved piece"):
+        library.delete("../escape")
+
+
+def test_a_deleted_piece_leaves_the_rotation(library, monkeypatch):
+    monkeypatch.setattr(art, "ARTWORKS", {})
+    write(library, "one", A_PIECE)
+    write(library, "two", f"{'🟦' * charcodes.COLS}\n\n\n")
+
+    library.delete("two")
+
+    assert all(library.grid() == art.to_grid(A_PIECE) for _ in range(5))
