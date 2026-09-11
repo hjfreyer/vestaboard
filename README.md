@@ -67,7 +67,18 @@ async def good_morning(ctx):
 @on_state("binary_sensor.front_door", to="on")
 async def front_door_opened(ctx, event):
     await ctx.board.send_text("WELCOME HOME")
+
+
+@on_state("counter.eggs")
+async def eggs_changed(ctx, event):
+    await ctx.board.send_text(f"EGGS: {event['new_state']['state']}")
 ```
+
+`@on_state` fires only when the value really changes, so a rule can read
+`event["new_state"]["state"]` without checking it first. Attribute-only edits,
+the restore that follows a Home Assistant restart, and values going `unknown`
+or `unavailable` all pass by silently -- unless `to=` or `from_=` asks for one
+of those states by name.
 
 `ctx.board` sends to the board, `ctx.hass` reads state and calls services.
 Schedules use APScheduler's cron fields in the container's timezone, which
