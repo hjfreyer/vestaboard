@@ -15,6 +15,7 @@ from . import registry, web
 from . import settings as settings_module
 from .board import Vestaboard
 from .hass import HassClient
+from .library import Library
 from .settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ class Context:
 
     board: Vestaboard
     hass: HassClient
+    art: Library
     settings: Settings
 
 
@@ -127,12 +129,13 @@ async def run() -> None:
             hass=HassClient(
                 settings.rest_url, settings.ws_url, settings.hass_token, session
             ),
+            art=Library(settings.art_dir),
             settings=settings,
         )
 
         scheduler = _build_scheduler(ctx)
         scheduler.start()
-        gallery = await web.serve(settings.web_port)
+        gallery = await web.serve(ctx, settings.web_port)
 
         try:
             if not settings.has_hass:

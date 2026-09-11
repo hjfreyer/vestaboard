@@ -52,8 +52,11 @@ FILLED = 71
 #: Codes the board has no character for -- the colored chips -- are absent.
 CODE_TO_CHAR: dict[int, str] = {code: char for char, code in CHAR_TO_CODE.items()}
 
-ROWS = 6
-COLS = 22
+#: The board's own size. This is a Vestaboard Note: 3 rows of 15 chips. A
+#: flagship Vestaboard is 6 rows of 22, and the Cloud API expects whichever
+#: shape the board it is pointed at has.
+ROWS = 3
+COLS = 15
 
 
 class UnsupportedCharacter(ValueError):
@@ -72,7 +75,7 @@ def blank_grid() -> list[list[int]]:
 
 
 def encode_lines(lines: list[str], *, center: bool = True) -> list[list[int]]:
-    """Encode up to 6 lines of up to 22 characters into a character grid."""
+    """Encode lines of text into a character grid, up to the board's own size."""
     if len(lines) > ROWS:
         raise ValueError(f"{len(lines)} lines does not fit in {ROWS} rows")
 

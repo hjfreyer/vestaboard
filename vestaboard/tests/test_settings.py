@@ -52,6 +52,16 @@ def test_the_gallery_port_matches_ingress_unless_told_otherwise(tmp_path, monkey
     assert settings_module.load().web_port == settings_module.DEFAULT_WEB_PORT
 
 
+def test_saved_art_lives_in_the_app_storage(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings_module, "OPTIONS_PATH", tmp_path / "missing.json")
+    monkeypatch.delenv("ART_DIR", raising=False)
+
+    assert settings_module.load().art_dir == settings_module.DATA_DIR / "art"
+
+    monkeypatch.setenv("ART_DIR", "/somewhere/else")
+    assert settings_module.load().art_dir == Path("/somewhere/else")
+
+
 def test_no_token_means_no_home_assistant(tmp_path, monkeypatch):
     monkeypatch.setattr(settings_module, "OPTIONS_PATH", tmp_path / "missing.json")
     monkeypatch.delenv("SUPERVISOR_TOKEN", raising=False)

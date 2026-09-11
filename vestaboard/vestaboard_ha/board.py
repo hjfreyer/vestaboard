@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 
@@ -26,6 +27,27 @@ class BoardError(RuntimeError):
     """The board rejected a message."""
 
 
+def _layout(body: str) -> list[list[int]]:
+    """The grid out of a current-message response."""
+    try:
+        layout = json.loads(body)["currentMessage"]["layout"]
+        # The Cloud API sends the grid as JSON inside the JSON.
+        if isinstance(layout, str):
+            layout = json.loads(layout)
+        grid = [[int(code) for code in row] for row in layout]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise BoardError(f"could not make sense of {body[:200]!r}") from exc
+
+    if not grid or any(len(row) != len(grid[0]) for row in grid):
+        raise BoardError("the board sent rows of different lengths")
+    if len(grid) > charcodes.ROWS or len(grid[0]) > charcodes.COLS:
+        raise BoardError(
+            f"the board sent {len(grid)}x{len(grid[0])} chips, more than "
+            f"{charcodes.ROWS}x{charcodes.COLS}"
+        )
+    return grid
+
+
 class Vestaboard:
     """Posts messages, never faster than ``min_interval`` seconds apart."""
 
@@ -44,16 +66,34 @@ class Vestaboard:
         self._lock = asyncio.Lock()
         self._last_sent: float | None = None
 
+    async def read(self) -> list[list[int]]:
+        """The board's current state, as a grid of character codes.
+
+        A read changes nothing, so it is neither rate limited nor held back by
+        ``dry_run``; it does still need a token.
+        """
+        if not self._token:
+            raise BoardError("no API token configured")
+
+        async with self._session.get(
+            CLOUD_ENDPOINT, headers={"X-Vestaboard-Token": self._token}
+        ) as response:
+            body = await response.text()
+            if response.status >= 400:
+                raise BoardError(f"HTTP {response.status} from Vestaboard: {body}")
+
+        return _layout(body)
+
     async def send_text(self, text: str) -> None:
         """Send text and let the board center and wrap it."""
         await self._post({"text": text})
 
     async def send_lines(self, lines: list[str], *, center: bool = True) -> None:
-        """Send up to 6 lines, positioned exactly as given."""
+        """Send lines of text, positioned exactly as given."""
         await self.send_characters(charcodes.encode_lines(lines, center=center))
 
     async def send_characters(self, grid: list[list[int]]) -> None:
-        """Send a 6x22 grid of character codes."""
+        """Send a grid of character codes the size of the board."""
         if len(grid) != charcodes.ROWS or any(len(r) != charcodes.COLS for r in grid):
             raise ValueError(
                 f"grid must be {charcodes.ROWS}x{charcodes.COLS} character codes"

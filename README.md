@@ -47,6 +47,7 @@ vestaboard/                the app; also the Docker build context
   vestaboard_ha/
     rules.py               >>> the file worth editing <<<
     art.py                 the pixel art, and the encoding of it
+    library.py             the art on disk, capturing it, and picking one
     web.py                 the art gallery, served over ingress
     app.py                 wires rules to the scheduler and the event stream
     registry.py            the @on_schedule, @on_state and @on_action decorators
@@ -73,7 +74,7 @@ async def eggs_changed(ctx, event):
 
 @on_action("show_art")
 async def show_art(ctx, data):
-    await ctx.board.send_characters(art.grid(data.get("name")))
+    await ctx.board.send_characters(ctx.art.grid(data.get("name")))
 ```
 
 `@on_state` fires only when the value really changes, so a rule can read
@@ -89,14 +90,16 @@ rename), so an action here is a custom event under our own name --
 and the rule is handed the event data as its second argument. In the automation
 editor that is **Add action → Other actions → Fire event**.
 
-`ctx.board` sends to the board, `ctx.hass` reads state and calls services.
+`ctx.board` sends to the board, `ctx.hass` reads state and calls services, and
+`ctx.art` is the art library: `ctx.art.grid("heart")` for a named piece,
+`ctx.art.grid()` for a random one.
 Schedules use APScheduler's cron fields in the container's timezone, which
 Home Assistant sets to match the one configured for the house.
 
 ## Pixel art
 
-`art.py` holds the artwork, each piece 15 chips wide and 3 rows tall, written
-inline and centered on the board when it is sent:
+The board is a Vestaboard Note: 15 chips across, 3 rows down, which is what a
+piece is. `art.py` holds the artwork, written inline so the source shows it:
 
 ```python
 ARTWORKS = {
@@ -126,18 +129,36 @@ a piece mix the two:
 ```
 
 Lines are written flush left and may stop early; the right side is padded with
-blanks.
+blanks, and a piece smaller than the board is centered on it.
+
+### Saved art
+
+Pieces also come from files. `/data/art` is part of the app's own storage, so
+it survives restarts and updates, and every `.txt` file in it is a piece named
+after the file -- `sunrise.txt` is `sunrise`, written in the same squares as
+`art.py`. Delete the file and the piece is gone; rename it and the piece is
+renamed. A file wins over a piece of the same name in `art.py`, because a file
+is something you put there on purpose.
+
+The gallery's **Capture the board** button is the quick way to make one: it
+reads what the board is showing right now and writes it to the next free
+`capture-N.txt`, text and all. Capturing the same thing twice does not make a
+second file. A saved piece is in the rotation from that moment, without a
+restart.
+
+A file that no longer parses -- an easy thing to do by hand -- says so on its
+card in the gallery and sits out the rotation, rather than breaking either.
 
 ### The gallery
 
 Every piece, chip for chip, is on the app's own page: **Open Web UI** on the app
 in Home Assistant, or the sidebar entry if you turn one on from that page. It is
-a scrollable list, one card per piece, each the 15x3 block as `art.py` has it --
-not the blank surround the board centers it in, which is the same for every
-piece -- labeled with the name to pass as `event_data`. The page is rendered
-from `ARTWORKS` on each request, so a piece added to `art.py` is in the gallery
-as soon as the app restarts, and one that no longer encodes says why on its card
-instead of disappearing.
+a scrollable list, one card per piece, labeled with the name to pass as
+`event_data` and marked `saved` when the piece is a file rather than something
+in `art.py`. There is a **Capture the board** button in the header.
+
+The page is built on each request, so a saved piece appears the moment it is
+written and a piece added to `art.py` appears as soon as the app restarts.
 
 Home Assistant serves the page itself, through ingress, so nothing is exposed
 to the network and there is no port to open. Outside the app store the same

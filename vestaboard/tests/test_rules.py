@@ -1,6 +1,7 @@
 import pytest
 
 from vestaboard_ha import art, charcodes, rules
+from vestaboard_ha.library import Library
 
 
 class FakeBoard:
@@ -16,13 +17,14 @@ class FakeBoard:
 
 
 class FakeContext:
-    def __init__(self):
+    def __init__(self, art_dir):
         self.board = FakeBoard()
+        self.art = Library(art_dir)
 
 
 @pytest.mark.asyncio
-async def test_the_count_goes_to_the_board():
-    ctx = FakeContext()
+async def test_the_count_goes_to_the_board(tmp_path):
+    ctx = FakeContext(tmp_path)
 
     await rules.eggs_changed(
         ctx,
@@ -37,8 +39,8 @@ async def test_the_count_goes_to_the_board():
 
 
 @pytest.mark.asyncio
-async def test_the_named_artwork_goes_to_the_board():
-    ctx = FakeContext()
+async def test_the_named_artwork_goes_to_the_board(tmp_path):
+    ctx = FakeContext(tmp_path)
 
     await rules.show_art(ctx, {"name": "invader"})
 
@@ -46,8 +48,18 @@ async def test_the_named_artwork_goes_to_the_board():
 
 
 @pytest.mark.asyncio
-async def test_no_name_means_any_artwork():
-    ctx = FakeContext()
+async def test_a_saved_piece_goes_to_the_board_too(tmp_path):
+    ctx = FakeContext(tmp_path)
+    (tmp_path / "captured.txt").write_text(art.ARTWORKS["heart"].strip("\n") + "\n")
+
+    await rules.show_art(ctx, {"name": "captured"})
+
+    assert ctx.board.grids == [art.to_grid(art.ARTWORKS["heart"])]
+
+
+@pytest.mark.asyncio
+async def test_no_name_means_any_artwork(tmp_path):
+    ctx = FakeContext(tmp_path)
 
     await rules.show_art(ctx, {})
 
