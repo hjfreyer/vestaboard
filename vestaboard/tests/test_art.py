@@ -111,7 +111,12 @@ def test_squares_and_characters_both_encode():
 
 
 def test_text_and_art_share_a_piece():
-    grid = art.to_grid(art.ARTWORKS["party"])
+    party = """
+🟥🟧🟨🟩🟦🟪🟥🟧🟨🟩🟦🟪🟥🟧🟨
+⬛⬛⬛⬛ P A R T Y !⬛⬛⬛⬛⬛
+🟪🟦🟩🟨🟧🟥🟪🟦🟩🟨🟧🟥🟪🟦🟩
+"""
+    grid = art.to_grid(party)
     word = [charcodes.encode_char(c) for c in "PARTY!"]
 
     assert charcodes.RED in grid[0]

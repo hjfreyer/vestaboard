@@ -28,7 +28,7 @@ from .registry import on_action, on_state
 async def show_art(ctx: Context, data: dict[str, Any]) -> None:
     """Fire ``vestaboard_show_art`` in Home Assistant to put art on the board.
 
-    With no ``event_data``, a random piece; with ``name: heart``, that one. The
+    With no ``event_data``, a random piece; with ``name: rainbow``, that one. The
     pieces are the ones in ``art.py`` and the ones captured into the gallery.
     An automation on a half-hourly time pattern is what makes it a rotation --
     see the README.

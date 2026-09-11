@@ -1,7 +1,7 @@
 """The art library: the pieces in ``art.py``, the ones on disk, and picking one.
 
-Saved pieces are text files in the app's own data directory -- ``heart.txt``
-holds a piece named ``heart`` -- written in the same square-per-chip form as
+Saved pieces are text files in the app's own data directory -- ``sunrise.txt``
+holds a piece named ``sunrise`` -- written in the same square-per-chip form as
 ``art.py``, so a file can be hand-edited and a piece can be deleted by deleting
 it. A file shadows a built-in piece of the same name, since a file is something
 somebody put there on purpose.
