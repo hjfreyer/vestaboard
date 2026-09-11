@@ -46,8 +46,9 @@ vestaboard/                the app; also the Docker build context
   Dockerfile               how Supervisor builds it
   vestaboard_ha/
     rules.py               >>> the file worth editing <<<
+    art.py                 the pixel art, and the encoding of it
     app.py                 wires rules to the scheduler and the event stream
-    registry.py            the @on_schedule and @on_state decorators
+    registry.py            the @on_schedule, @on_state and @on_action decorators
     board.py               Vestaboard Cloud API client
     hass.py                Home Assistant websocket + REST client
     charcodes.py           character codes, for exact placement
@@ -59,19 +60,19 @@ docker-compose.yml         fallback for installs without the app store
 ## Writing rules
 
 ```python
-@on_schedule(hour=7, minute=0)
-async def good_morning(ctx):
-    await ctx.board.send_text("GOOD MORNING")
-
-
-@on_state("binary_sensor.front_door", to="on")
-async def front_door_opened(ctx, event):
-    await ctx.board.send_text("WELCOME HOME")
+@on_schedule(hour=17, minute=30)
+async def dinner_time(ctx):
+    await ctx.board.send_text("DINNER")
 
 
 @on_state("counter.eggs")
 async def eggs_changed(ctx, event):
     await ctx.board.send_text(f"EGGS: {event['new_state']['state']}")
+
+
+@on_action("show_art")
+async def show_art(ctx, data):
+    await ctx.board.send_characters(art.grid(data.get("name")))
 ```
 
 `@on_state` fires only when the value really changes, so a rule can read
@@ -80,9 +81,57 @@ the restore that follows a Home Assistant restart, and values going `unknown`
 or `unavailable` all pass by silently -- unless `to=` or `from_=` asks for one
 of those states by name.
 
+`@on_action` is the other direction: Home Assistant decides when. An app cannot
+register a real action (what Home Assistant called a service before the
+rename), so an action here is a custom event under our own name --
+`@on_action("show_art")` runs whenever anything fires `vestaboard_show_art` --
+and the rule is handed the event data as its second argument. In the automation
+editor that is **Add action → Other actions → Fire event**.
+
 `ctx.board` sends to the board, `ctx.hass` reads state and calls services.
 Schedules use APScheduler's cron fields in the container's timezone, which
 Home Assistant sets to match the one configured for the house.
+
+## Pixel art
+
+`art.py` holds the artwork, each piece a 15x3 block of chips written inline and
+centered on the board when it is sent:
+
+```python
+ARTWORKS = {
+    "sunset": """
+      YYY
+   YYOOOOOYY
+OOOORRRRRRROOOO
+""",
+}
+```
+
+A space is a blank chip, `R O Y G B V` are the colors, `W` white, `K` black and
+`#` a filled chip; anything else is taken as a literal character, so words can
+be mixed in. Lines are written flush left and may stop early.
+
+The rotation lives in Home Assistant rather than here, so it can be changed
+without pushing anything:
+
+```yaml
+alias: Vestaboard art
+triggers:
+  - trigger: time_pattern
+    minutes: "/30"
+actions:
+  - event: vestaboard_show_art
+```
+
+That is a random piece every half hour, never the same one twice in a row. To
+ask for a particular one, name it:
+
+```yaml
+actions:
+  - event: vestaboard_show_art
+    event_data:
+      name: heart
+```
 
 ## Developing locally
 

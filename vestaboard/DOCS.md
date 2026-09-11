@@ -18,6 +18,40 @@ The app used to talk to the older Read/Write API and called this option
 `read_write_key`. If you are updating from that version, the old value is gone:
 create a Cloud API token in the web app and paste it into `api_token`.
 
+## Actions
+
+The app listens for events, so an automation can put something on the board.
+Use the **Fire event** action (under *Other actions* in the automation editor):
+
+| Event                  | What it does                                          |
+| ---------------------- | ----------------------------------------------------- |
+| `vestaboard_show_art`  | Shows a piece of pixel art. Optional `name` picks one. |
+
+A half-hourly rotation, then, is an automation and not a code change:
+
+```yaml
+alias: Vestaboard art
+triggers:
+  - trigger: time_pattern
+    minutes: "/30"
+actions:
+  - event: vestaboard_show_art
+```
+
+Leave out `event_data` and the app picks at random, never repeating the piece
+already on the board. To ask for one by name:
+
+```yaml
+actions:
+  - event: vestaboard_show_art
+    event_data:
+      name: heart
+```
+
+The names are the keys of `ARTWORKS` in `vestaboard_ha/art.py`: `sunset`,
+`heart`, `rainbow`, `invader`, `mountain`, `flower`. An unknown name is logged
+as an error and leaves the board alone.
+
 ## Changing what gets sent
 
 Rules live in `vestaboard_ha/rules.py` in the repository. Edit that file, push

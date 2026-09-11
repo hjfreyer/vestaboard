@@ -64,12 +64,12 @@ class HassClient:
                 )
             return await response.json()
 
-    async def listen_forever(self, handler: EventHandler, event_type: str) -> None:
-        """Subscribe to an event type, reconnecting on any failure."""
+    async def listen_forever(self, handler: EventHandler, *event_types: str) -> None:
+        """Subscribe to one or more event types, reconnecting on any failure."""
         backoff = 1.0
         while True:
             try:
-                await self._listen_once(handler, event_type)
+                await self._listen_once(handler, event_types)
                 backoff = 1.0
             except asyncio.CancelledError:
                 raise
@@ -80,19 +80,24 @@ class HassClient:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, MAX_BACKOFF_SECONDS)
 
-    async def _listen_once(self, handler: EventHandler, event_type: str) -> None:
+    async def _listen_once(
+        self, handler: EventHandler, event_types: tuple[str, ...]
+    ) -> None:
         async with self._session.ws_connect(self._ws_url, heartbeat=30) as ws:
             await self._authenticate(ws)
 
-            self._message_id += 1
-            await ws.send_json(
-                {
-                    "id": self._message_id,
-                    "type": "subscribe_events",
-                    "event_type": event_type,
-                }
-            )
-            _LOGGER.info("subscribed to %s", event_type)
+            # One subscription per type; Home Assistant has no way to ask for
+            # several at once, short of taking every event on the bus.
+            for event_type in event_types:
+                self._message_id += 1
+                await ws.send_json(
+                    {
+                        "id": self._message_id,
+                        "type": "subscribe_events",
+                        "event_type": event_type,
+                    }
+                )
+            _LOGGER.info("subscribed to %s", ", ".join(event_types))
 
             async for message in ws:
                 if message.type is not aiohttp.WSMsgType.TEXT:
