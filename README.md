@@ -91,7 +91,7 @@ and the rule is handed the event data as its second argument. In the automation
 editor that is **Add action → Other actions → Fire event**.
 
 `ctx.board` sends to the board, `ctx.hass` reads state and calls services, and
-`ctx.art` is the art library: `ctx.art.grid("heart")` for a named piece,
+`ctx.art` is the art library: `ctx.art.grid("rainbow")` for a named piece,
 `ctx.art.grid()` for a random one.
 Schedules use APScheduler's cron fields in the container's timezone, which
 Home Assistant sets to match the one configured for the house.
@@ -103,10 +103,10 @@ piece is. `art.py` holds the artwork, written inline so the source shows it:
 
 ```python
 ARTWORKS = {
-    "sunset": """
-⬛⬛⬛⬛⬛⬛🟨🟨🟨⬛⬛⬛⬛⬛⬛
-⬛⬛⬛🟨🟨🟧🟧🟧🟧🟧🟨🟨⬛⬛⬛
-🟧🟧🟧🟧🟥🟥🟥🟥🟥🟥🟥🟧🟧🟧🟧
+    "rainbow": """
+🟥🟥🟥🟧🟧🟧🟨🟨🟨🟩🟩🟩🟦🟦🟦
+🟧🟧🟧🟨🟨🟨🟩🟩🟩🟦🟦🟦🟪🟪🟪
+🟨🟨🟨🟩🟩🟩🟦🟦🟦🟪🟪🟪🟥🟥🟥
 """,
 }
 ```
@@ -127,6 +127,9 @@ a piece mix the two:
 🟪🟦🟩🟨🟧🟥🟪🟦🟩🟨🟧🟥🟪🟦🟩
 """,
 ```
+
+`art.py` ships with `rainbow` and nothing else; everything past that is yours
+to write, or to capture.
 
 Lines are written flush left and may stop early; the right side is padded with
 blanks, and a piece smaller than the board is centered on it.
@@ -183,7 +186,7 @@ ask for a particular one, name it:
 actions:
   - event: vestaboard_show_art
     event_data:
-      name: heart
+      name: rainbow
 ```
 
 ## Developing locally

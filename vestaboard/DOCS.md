@@ -56,13 +56,13 @@ already on the board. To ask for one by name:
 actions:
   - event: vestaboard_show_art
     event_data:
-      name: heart
+      name: rainbow
 ```
 
-The names are the keys of `ARTWORKS` in `vestaboard_ha/art.py` -- `sunset`,
-`heart`, `rainbow`, `invader`, `mountain`, `flower`, `party` -- plus anything
-captured or saved into `/data/art`. The gallery lists the lot with the art next
-to each name. An unknown name is logged as an error and leaves the board alone.
+The names are the keys of `ARTWORKS` in `vestaboard_ha/art.py` -- `rainbow` is
+the only one shipped -- plus anything captured or saved into `/data/art`. The
+gallery lists the lot with the art next to each name. An unknown name is logged
+as an error and leaves the board alone.
 
 ## Changing what gets sent
 

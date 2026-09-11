@@ -69,10 +69,10 @@ async def test_an_action_runs_on_its_own_event(clean_registry):
         got.append("other")
 
     await app._dispatch(
-        None, {"event_type": "vestaboard_show_art", "data": {"name": "heart"}}
+        None, {"event_type": "vestaboard_show_art", "data": {"name": "rainbow"}}
     )
 
-    assert got == [{"name": "heart"}]
+    assert got == [{"name": "rainbow"}]
 
 
 @pytest.mark.asyncio

@@ -40,11 +40,12 @@ def test_saved_pieces_come_after_the_built_in_ones(library):
 
 
 def test_a_file_shadows_a_built_in_piece_of_the_same_name(library):
-    write(library, "heart")
+    write(library, "rainbow")
 
-    assert library.pieces()["heart"] == A_PIECE
+    assert library.pieces()["rainbow"] == A_PIECE
     # In the place the built-in piece had, so the gallery does not jump around.
-    assert list(library.pieces()).index("heart") == list(art.ARTWORKS).index("heart")
+    index = list(library.pieces()).index("rainbow")
+    assert index == list(art.ARTWORKS).index("rainbow")
 
 
 def test_a_file_written_on_windows_still_parses(library):
@@ -87,7 +88,7 @@ def test_nothing_showable_is_an_error(library, monkeypatch):
 
 
 def test_a_capture_reads_back_as_the_grid_it_came_from(library):
-    grid = art.to_grid(art.ARTWORKS["invader"])
+    grid = art.to_grid(art.ARTWORKS["rainbow"])
 
     saved = library.capture(grid)
 
@@ -108,11 +109,11 @@ def test_captures_are_numbered_past_the_highest_there_has_been(library):
     write(library, "capture-7")
     write(library, "capture-nope")
 
-    assert library.capture(art.to_grid(art.ARTWORKS["heart"])).name == "capture-8"
+    assert library.capture(art.to_grid(art.ARTWORKS["rainbow"])).name == "capture-8"
 
 
 def test_capturing_the_same_board_twice_keeps_the_one_file(library):
-    grid = art.to_grid(art.ARTWORKS["flower"])
+    grid = art.to_grid(art.ARTWORKS["rainbow"])
 
     first = library.capture(grid)
     second = library.capture(grid)

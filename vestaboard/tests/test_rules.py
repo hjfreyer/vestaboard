@@ -42,19 +42,19 @@ async def test_the_count_goes_to_the_board(tmp_path):
 async def test_the_named_artwork_goes_to_the_board(tmp_path):
     ctx = FakeContext(tmp_path)
 
-    await rules.show_art(ctx, {"name": "invader"})
+    await rules.show_art(ctx, {"name": "rainbow"})
 
-    assert ctx.board.grids == [art.to_grid(art.ARTWORKS["invader"])]
+    assert ctx.board.grids == [art.to_grid(art.ARTWORKS["rainbow"])]
 
 
 @pytest.mark.asyncio
 async def test_a_saved_piece_goes_to_the_board_too(tmp_path):
     ctx = FakeContext(tmp_path)
-    (tmp_path / "captured.txt").write_text(art.ARTWORKS["heart"].strip("\n") + "\n")
+    (tmp_path / "captured.txt").write_text(art.ARTWORKS["rainbow"].strip("\n") + "\n")
 
     await rules.show_art(ctx, {"name": "captured"})
 
-    assert ctx.board.grids == [art.to_grid(art.ARTWORKS["heart"])]
+    assert ctx.board.grids == [art.to_grid(art.ARTWORKS["rainbow"])]
 
 
 @pytest.mark.asyncio

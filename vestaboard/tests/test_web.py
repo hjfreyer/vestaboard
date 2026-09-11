@@ -7,8 +7,15 @@ from vestaboard_ha import art, web
 from vestaboard_ha.board import BoardError
 from vestaboard_ha.library import Library
 
-#: The shipped pieces are all 15 chips by 3.
+#: A piece is the board: 15 chips by 3.
 CHIPS_PER_PIECE = 15 * 3
+
+#: Squares and text in one piece, for the tests that want both.
+A_PIECE = """
+🟥🟧🟨🟩🟦🟪🟥🟧🟨🟩🟦🟪🟥🟧🟨
+⬛⬛⬛⬛ P A R T Y !⬛⬛⬛⬛⬛
+🟪🟦🟩🟨🟧🟥🟪🟦🟩🟨🟧🟥🟪🟦🟩
+"""
 
 
 class FakeBoard:
@@ -81,7 +88,7 @@ def test_cards_keep_the_order_art_py_has_them_in():
 
 
 def test_colors_and_characters_both_show_up():
-    html = web.page({"party": art.ARTWORKS["party"]})
+    html = web.page({"party": A_PIECE})
 
     assert '<span class="chip red"></span>' in html
     assert '<span class="chip violet"></span>' in html
@@ -91,7 +98,7 @@ def test_colors_and_characters_both_show_up():
 
 def test_a_piece_that_no_longer_encodes_says_so():
     taller_than_the_board = "\n" + "🟥\n" * 7
-    html = web.page({"good": art.ARTWORKS["heart"], "broken": taller_than_the_board})
+    html = web.page({"good": A_PIECE, "broken": taller_than_the_board})
 
     assert "does not encode" in html
     assert "7 rows" in html
@@ -115,7 +122,7 @@ def test_an_empty_gallery_says_what_to_do():
 
 
 def test_one_piece_is_not_pluralized():
-    assert "1 piece." in web.page({"heart": art.ARTWORKS["heart"]})
+    assert "1 piece." in web.page({"rainbow": art.ARTWORKS["rainbow"]})
 
 
 def test_the_page_has_no_urls_to_rewrite():
@@ -139,12 +146,12 @@ async def test_the_gallery_is_served_as_html(tmp_path):
 
 @pytest.mark.asyncio
 async def test_the_page_follows_art_py(tmp_path, monkeypatch):
-    monkeypatch.setattr(art, "ARTWORKS", {"newcomer": art.ARTWORKS["heart"]})
+    monkeypatch.setattr(art, "ARTWORKS", {"newcomer": art.ARTWORKS["rainbow"]})
 
     _, body = await get_page(FakeContext(tmp_path))
 
     assert "newcomer" in body
-    assert "sunset" not in body
+    assert "rainbow" not in body
 
 
 @pytest.mark.asyncio
@@ -189,10 +196,10 @@ def test_the_header_offers_to_capture_the_board():
 
 
 def test_saved_pieces_are_marked_as_saved():
-    html = web.page({"heart": art.ARTWORKS["heart"]}, saved={"heart"})
+    html = web.page({"rainbow": art.ARTWORKS["rainbow"]}, saved={"rainbow"})
 
     assert '<span class="tag">saved</span>' in html
-    assert web.page({"heart": art.ARTWORKS["heart"]}).count('class="tag"') == 0
+    assert web.page({"rainbow": art.ARTWORKS["rainbow"]}).count('class="tag"') == 0
 
 
 def test_a_notice_is_shown_and_escaped():
@@ -204,7 +211,7 @@ def test_a_notice_is_shown_and_escaped():
 @pytest.mark.asyncio
 async def test_a_saved_piece_shows_up_in_the_gallery(tmp_path):
     ctx = FakeContext(tmp_path)
-    ctx.art.capture(art.to_grid(art.ARTWORKS["invader"]))
+    ctx.art.capture(art.to_grid(art.ARTWORKS["rainbow"]))
 
     _, body = await get_page(ctx)
 
@@ -214,7 +221,7 @@ async def test_a_saved_piece_shows_up_in_the_gallery(tmp_path):
 
 @pytest.mark.asyncio
 async def test_capture_saves_the_board_and_says_where(tmp_path):
-    grid = art.to_grid(art.ARTWORKS["flower"])
+    grid = art.to_grid(A_PIECE)
     ctx = FakeContext(tmp_path, FakeBoard(grid))
 
     response, _ = await post_capture(ctx)
@@ -228,7 +235,7 @@ async def test_capture_saves_the_board_and_says_where(tmp_path):
 
 @pytest.mark.asyncio
 async def test_the_page_after_a_capture_names_the_piece(tmp_path):
-    ctx = FakeContext(tmp_path, FakeBoard(art.to_grid(art.ARTWORKS["flower"])))
+    ctx = FakeContext(tmp_path, FakeBoard(art.to_grid(A_PIECE)))
     await post_capture(ctx)
 
     _, body = await get_page(ctx, "/?saved=capture-1")
@@ -238,7 +245,7 @@ async def test_the_page_after_a_capture_names_the_piece(tmp_path):
 
 @pytest.mark.asyncio
 async def test_capturing_the_same_board_again_says_so(tmp_path):
-    ctx = FakeContext(tmp_path, FakeBoard(art.to_grid(art.ARTWORKS["flower"])))
+    ctx = FakeContext(tmp_path, FakeBoard(art.to_grid(A_PIECE)))
     await post_capture(ctx)
 
     response, _ = await post_capture(ctx)

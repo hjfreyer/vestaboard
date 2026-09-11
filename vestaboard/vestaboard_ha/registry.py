@@ -134,7 +134,7 @@ def on_action(action: str) -> Callable[[ActionFn], ActionFn]:
         actions:
           - event: vestaboard_show_art
             event_data:
-              name: heart
+              name: rainbow
 
     The rule is handed the event data, so ``event_data`` is how an automation
     passes arguments; it is ``{}`` when the automation sends none.
