@@ -48,6 +48,10 @@ WHITE = 69
 BLACK = 70
 FILLED = 71
 
+#: The other direction, for anything that has a grid and wants to show it.
+#: Codes the board has no character for -- the colored chips -- are absent.
+CODE_TO_CHAR: dict[int, str] = {code: char for char, code in CHAR_TO_CODE.items()}
+
 ROWS = 6
 COLS = 22
 

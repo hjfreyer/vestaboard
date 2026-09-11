@@ -10,6 +10,15 @@ def test_letters_and_digits_round_trip():
     assert charcodes.encode_char("0") == 36
 
 
+def test_every_character_decodes_back():
+    for char, code in charcodes.CHAR_TO_CODE.items():
+        assert charcodes.CODE_TO_CHAR[code] == char
+
+    assert charcodes.CODE_TO_CHAR[charcodes.BLANK] == " "
+    # The colored chips are not characters and have no entry.
+    assert charcodes.RED not in charcodes.CODE_TO_CHAR
+
+
 def test_unsupported_character_is_rejected():
     with pytest.raises(charcodes.UnsupportedCharacter):
         charcodes.encode_char("☃")

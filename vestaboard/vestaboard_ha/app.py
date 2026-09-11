@@ -11,7 +11,7 @@ import aiohttp
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from . import registry
+from . import registry, web
 from . import settings as settings_module
 from .board import Vestaboard
 from .hass import HassClient
@@ -132,6 +132,7 @@ async def run() -> None:
 
         scheduler = _build_scheduler(ctx)
         scheduler.start()
+        gallery = await web.serve(settings.web_port)
 
         try:
             if not settings.has_hass:
@@ -145,3 +146,5 @@ async def run() -> None:
                 )
         finally:
             scheduler.shutdown(wait=False)
+            if gallery is not None:
+                await gallery.cleanup()

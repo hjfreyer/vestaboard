@@ -11,6 +11,14 @@ init: false
 boot: auto
 startup: application
 homeassistant_api: true
+# The art gallery. Home Assistant serves it itself, so the port is never
+# published: the app page grows an "Open Web UI" button, and the sidebar entry
+# is a toggle on that page. ingress_port has to match DEFAULT_WEB_PORT in
+# settings.py, since Supervisor proxies this port and no other.
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:palette
+panel_title: Vestaboard
 options:
   api_token: ""
   log_level: info

@@ -47,6 +47,7 @@ vestaboard/                the app; also the Docker build context
   vestaboard_ha/
     rules.py               >>> the file worth editing <<<
     art.py                 the pixel art, and the encoding of it
+    web.py                 the art gallery, served over ingress
     app.py                 wires rules to the scheduler and the event stream
     registry.py            the @on_schedule, @on_state and @on_action decorators
     board.py               Vestaboard Cloud API client
@@ -126,6 +127,21 @@ a piece mix the two:
 
 Lines are written flush left and may stop early; the right side is padded with
 blanks.
+
+### The gallery
+
+Every piece, chip for chip, is on the app's own page: **Open Web UI** on the app
+in Home Assistant, or the sidebar entry if you turn one on from that page. It is
+a scrollable list, one card per piece, each the 15x3 block as `art.py` has it --
+not the blank surround the board centers it in, which is the same for every
+piece -- labeled with the name to pass as `event_data`. The page is rendered
+from `ARTWORKS` on each request, so a piece added to `art.py` is in the gallery
+as soon as the app restarts, and one that no longer encodes says why on its card
+instead of disappearing.
+
+Home Assistant serves the page itself, through ingress, so nothing is exposed
+to the network and there is no port to open. Outside the app store the same
+page is at `http://localhost:8099/`, which `docker-compose.yml` publishes.
 
 The rotation lives in Home Assistant rather than here, so it can be changed
 without pushing anything:
