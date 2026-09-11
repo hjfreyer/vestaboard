@@ -31,6 +31,27 @@ class Context:
     settings: Settings
 
 
+async def _dispatch(ctx: Context, event: dict[str, Any]) -> None:
+    """Hand one Home Assistant event to whichever rules asked for it."""
+    if event.get("event_type") == STATE_CHANGED:
+        await _dispatch_state_change(ctx, event)
+    else:
+        await _dispatch_action(ctx, event)
+
+
+async def _dispatch_action(ctx: Context, event: dict[str, Any]) -> None:
+    event_type = event.get("event_type")
+    data = event.get("data", {})
+    for rule in registry.ACTION_RULES:
+        if rule.event_type != event_type:
+            continue
+        _LOGGER.info("rule %s triggered by %s", rule.name, event_type)
+        try:
+            await rule.fn(ctx, data)
+        except Exception:
+            _LOGGER.exception("rule %s failed", rule.name)
+
+
 async def _dispatch_state_change(ctx: Context, event: dict[str, Any]) -> None:
     data = event.get("data", {})
     for rule in registry.STATE_RULES:
@@ -49,6 +70,15 @@ async def _run_scheduled(ctx: Context, rule: registry.ScheduledRule) -> None:
         await rule.fn(ctx)
     except Exception:
         _LOGGER.exception("rule %s failed", rule.name)
+
+
+def _event_types() -> list[str]:
+    """Every event type the rules need, without duplicates."""
+    types = [STATE_CHANGED] if registry.STATE_RULES else []
+    for rule in registry.ACTION_RULES:
+        if rule.event_type not in types:
+            types.append(rule.event_type)
+    return types
 
 
 def _build_scheduler(ctx: Context) -> AsyncIOScheduler:
@@ -78,11 +108,14 @@ async def run() -> None:
     from . import rules  # noqa: F401
 
     _LOGGER.info(
-        "starting with %d scheduled and %d state rules%s",
+        "starting with %d scheduled, %d state and %d action rules%s",
         len(registry.SCHEDULED_RULES),
         len(registry.STATE_RULES),
+        len(registry.ACTION_RULES),
         " (DRY RUN)" if settings.dry_run else "",
     )
+    for rule in registry.ACTION_RULES:
+        _LOGGER.info("action %s: fire the %s event", rule.name, rule.event_type)
 
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=30)
@@ -108,7 +141,7 @@ async def run() -> None:
                 await asyncio.Event().wait()
             else:
                 await ctx.hass.listen_forever(
-                    lambda event: _dispatch_state_change(ctx, event), STATE_CHANGED
+                    lambda event: _dispatch(ctx, event), *_event_types()
                 )
         finally:
             scheduler.shutdown(wait=False)
