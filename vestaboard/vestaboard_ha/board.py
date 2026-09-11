@@ -1,4 +1,4 @@
-"""Vestaboard Read/Write API client."""
+"""Vestaboard Cloud API client."""
 
 from __future__ import annotations
 
@@ -12,10 +12,13 @@ from . import charcodes
 
 _LOGGER = logging.getLogger(__name__)
 
-RW_ENDPOINT = "https://rw.vestaboard.com/"
+# The Cloud API supersedes the old Read/Write API at rw.vestaboard.com. A
+# message is posted to the root path; the token comes from the Developer
+# section of the Vestaboard web app.
+CLOUD_ENDPOINT = "https://cloud.vestaboard.com/"
 
-# Vestaboard throttles writes. The published limit has moved around, so keep a
-# conservative floor of our own and back off when the API pushes back.
+# Vestaboard throttles writes to one message every 15 seconds; anything faster
+# is liable to be dropped. Keep our own floor at that limit.
 MIN_INTERVAL_SECONDS = 15.0
 
 
@@ -28,13 +31,13 @@ class Vestaboard:
 
     def __init__(
         self,
-        read_write_key: str,
+        api_token: str,
         session: aiohttp.ClientSession,
         *,
         min_interval: float = MIN_INTERVAL_SECONDS,
         dry_run: bool = False,
     ) -> None:
-        self._key = read_write_key
+        self._token = api_token
         self._session = session
         self._min_interval = min_interval
         self._dry_run = dry_run
@@ -66,13 +69,13 @@ class Vestaboard:
                 self._last_sent = time.monotonic()
                 return
 
-            if not self._key:
-                raise BoardError("no Read/Write key configured")
+            if not self._token:
+                raise BoardError("no API token configured")
 
             async with self._session.post(
-                RW_ENDPOINT,
+                CLOUD_ENDPOINT,
                 json=payload,
-                headers={"X-Vestaboard-Read-Write-Key": self._key},
+                headers={"X-Vestaboard-Token": self._token},
             ) as response:
                 body = await response.text()
                 self._last_sent = time.monotonic()

@@ -25,7 +25,7 @@ SUPERVISOR_WS = "ws://supervisor/core/websocket"
 
 @dataclass(frozen=True)
 class Settings:
-    read_write_key: str
+    api_token: str
     rest_url: str
     ws_url: str
     hass_token: str
@@ -67,9 +67,7 @@ def load() -> Settings:
         hass_token = os.environ.get("HASS_TOKEN", "")
 
     return Settings(
-        read_write_key=os.environ.get(
-            "VESTABOARD_READ_WRITE_KEY", options.get("read_write_key", "")
-        ),
+        api_token=os.environ.get("VESTABOARD_API_TOKEN", options.get("api_token", "")),
         rest_url=rest_url,
         ws_url=ws_url,
         hass_token=hass_token,

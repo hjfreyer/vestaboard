@@ -18,7 +18,8 @@ it the same way.
 2. Three-dot menu (top right) → **Repositories**.
 3. Add `https://github.com/hjfreyer/vestaboard` and close the dialog.
 4. The **Vestaboard** app appears at the bottom of the store. Install it.
-5. On its **Configuration** tab, paste the Vestaboard Read/Write key.
+5. On its **Configuration** tab, paste a Vestaboard Cloud API token, which
+   you create in the Developer section of the Vestaboard web app.
 6. Start it, and watch the **Log** tab.
 
 Set `dry_run: true` in the configuration first if you want to see what it would
@@ -47,7 +48,7 @@ vestaboard/                the app; also the Docker build context
     rules.py               >>> the file worth editing <<<
     app.py                 wires rules to the scheduler and the event stream
     registry.py            the @on_schedule and @on_state decorators
-    board.py               Vestaboard Read/Write API client
+    board.py               Vestaboard Cloud API client
     hass.py                Home Assistant websocket + REST client
     charcodes.py           character codes, for exact placement
     settings.py            app options, or env vars outside Home Assistant

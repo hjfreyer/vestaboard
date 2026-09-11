@@ -89,7 +89,7 @@ async def run() -> None:
     ) as session:
         ctx = Context(
             board=Vestaboard(
-                settings.read_write_key, session, dry_run=settings.dry_run
+                settings.api_token, session, dry_run=settings.dry_run
             ),
             hass=HassClient(
                 settings.rest_url, settings.ws_url, settings.hass_token, session
