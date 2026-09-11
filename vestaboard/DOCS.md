@@ -11,8 +11,8 @@ Assistant events.
 | `log_level`      | `debug` while you are working on rules, `info` otherwise.          |
 | `dry_run`        | Log what would be sent instead of sending it. Good for testing.    |
 
-Home Assistant access needs no configuration: the add-on talks to it through
-the Supervisor proxy using the token Supervisor provides.
+Home Assistant access needs no configuration: the app talks to it through the
+Supervisor proxy using the token Supervisor provides.
 
 ## Changing what gets sent
 
