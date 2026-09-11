@@ -1,0 +1,16 @@
+# Fallback for a Home Assistant install without the add-on store (HA Container
+# or Core). Create a long-lived access token in Home Assistant under your
+# profile, put the values in a .env file next to this one, then:
+#
+#   docker compose up -d --build     # first run
+#   git pull && docker compose up -d --build   # every update
+services:
+  vestaboard:
+    build: ./vestaboard
+    restart: unless-stopped
+    environment:
+      VESTABOARD_READ_WRITE_KEY: ${VESTABOARD_READ_WRITE_KEY}
+      HASS_URL: ${HASS_URL:-http://homeassistant.local:8123}
+      HASS_TOKEN: ${HASS_TOKEN}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TZ: ${TZ:-America/Los_Angeles}
