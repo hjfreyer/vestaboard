@@ -1,21 +1,20 @@
 """Pixel art for the board.
 
-Each artwork is a 15x3 block of chips, written inline as three lines of
-single-character color codes:
+Each artwork is 15 chips wide and 3 rows tall, written inline so the source
+shows the piece:
 
-    "sunset": '''
-          YYY
-       YYOOOOOYY
-    OOOORRRRRRROOOO
-    '''
+    "flower": '''
+⬛⬛⬛⬛⬛🟪🟪🟪🟪🟪⬛⬛⬛⬛⬛
+⬛⬛⬛⬛⬛🟪🟨🟨🟨🟪⬛⬛⬛⬛⬛
+⬛⬛⬛⬛⬛⬛⬛🟩⬛⬛⬛⬛⬛⬛⬛
+''',
 
-A space is a blank chip and the letters in ``PALETTE`` are the six colors,
-plus ``W`` white, ``K`` black and ``#`` for a filled (white) chip. Any other
-character falls through to ``charcodes.encode_char``, so letters, digits and
-punctuation can be mixed in.
+Every chip takes two columns, because that is what a fixed-width font gives a
+colored square. Text has to keep to the same grid, so a character is written as
+a space and then the character -- `` P A R T Y`` is five chips, not ten, and a
+bare ``PARTY`` is an error. Two spaces are therefore a blank chip, and since
+short lines are padded out on the right, trailing blanks can be left off.
 
-Lines are written flush left and may stop early -- the right side is padded
-out to 15 -- so no artwork depends on trailing whitespace surviving an editor.
 ``to_grid`` centers the block on the board's 6x22 grid.
 """
 
@@ -31,63 +30,104 @@ _LOGGER = logging.getLogger(__name__)
 WIDTH = 15
 HEIGHT = 3
 
-#: One character per kind of chip. Everything else is a literal character.
+#: Some sources paste the squares with a variation selector attached.
+VARIATION_SELECTOR = "\ufe0f"
+
+#: One square per color of chip. ⬛ is the board's off state; a black chip
+#: looks no different, so there is no separate square for one.
 PALETTE: dict[str, int] = {
-    " ": charcodes.BLANK,
-    "R": charcodes.RED,
-    "O": charcodes.ORANGE,
-    "Y": charcodes.YELLOW,
-    "G": charcodes.GREEN,
-    "B": charcodes.BLUE,
-    "V": charcodes.VIOLET,
-    "W": charcodes.WHITE,
-    "K": charcodes.BLACK,
-    "#": charcodes.FILLED,
+    "⬛": charcodes.BLANK,
+    "🟥": charcodes.RED,
+    "🟧": charcodes.ORANGE,
+    "🟨": charcodes.YELLOW,
+    "🟩": charcodes.GREEN,
+    "🟦": charcodes.BLUE,
+    "🟪": charcodes.VIOLET,
+    "⬜": charcodes.WHITE,
 }
 
 ARTWORKS: dict[str, str] = {
     "sunset": """
-      YYY
-   YYOOOOOYY
-OOOORRRRRRROOOO
+⬛⬛⬛⬛⬛⬛🟨🟨🟨⬛⬛⬛⬛⬛⬛
+⬛⬛⬛🟨🟨🟧🟧🟧🟧🟧🟨🟨⬛⬛⬛
+🟧🟧🟧🟧🟥🟥🟥🟥🟥🟥🟥🟧🟧🟧🟧
 """,
     "heart": """
-    RRR RRR
-   RRRRRRRRR
-     RRRRR
+⬛⬛⬛⬛🟥🟥🟥⬛🟥🟥🟥⬛⬛⬛⬛
+⬛⬛⬛🟥🟥🟥🟥🟥🟥🟥🟥🟥⬛⬛⬛
+⬛⬛⬛⬛⬛🟥🟥🟥🟥🟥⬛⬛⬛⬛⬛
 """,
     "rainbow": """
-RRROOOYYYGGGBBB
-OOOYYYGGGBBBVVV
-YYYGGGBBBVVVRRR
+🟥🟥🟥🟧🟧🟧🟨🟨🟨🟩🟩🟩🟦🟦🟦
+🟧🟧🟧🟨🟨🟨🟩🟩🟩🟦🟦🟦🟪🟪🟪
+🟨🟨🟨🟩🟩🟩🟦🟦🟦🟪🟪🟪🟥🟥🟥
 """,
     "invader": """
-  G  G   G  G
-  GGGGGGGGGGG
-  G GG   GG G
+⬛⬛🟩⬛⬛🟩⬛⬛⬛🟩⬛⬛🟩⬛⬛
+⬛⬛🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩⬛⬛
+⬛⬛🟩⬛🟩🟩⬛⬛⬛🟩🟩⬛🟩⬛⬛
 """,
     "mountain": """
-      WWW
-    GGGGGGG
-  GGGGGGGGGGG
+⬛⬛⬛⬛⬛⬛⬜⬜⬜⬛⬛⬛⬛⬛⬛
+⬛⬛⬛⬛🟩🟩🟩🟩🟩🟩🟩⬛⬛⬛⬛
+⬛⬛🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩⬛⬛
 """,
     "flower": """
-     VVVVV
-     VYYYV
-       G
+⬛⬛⬛⬛⬛🟪🟪🟪🟪🟪⬛⬛⬛⬛⬛
+⬛⬛⬛⬛⬛🟪🟨🟨🟨🟪⬛⬛⬛⬛⬛
+⬛⬛⬛⬛⬛⬛⬛🟩⬛⬛⬛⬛⬛⬛⬛
+""",
+    "party": """
+🟥🟧🟨🟩🟦🟪🟥🟧🟨🟩🟦🟪🟥🟧🟨
+⬛⬛⬛⬛ P A R T Y !⬛⬛⬛⬛⬛
+🟪🟦🟩🟨🟧🟥🟪🟦🟩🟨🟧🟥🟪🟦🟩
 """,
 }
 
 
-def encode_chip(char: str) -> int:
-    """Character code for one character of an artwork."""
-    if char in PALETTE:
-        return PALETTE[char]
-    return charcodes.encode_char(char)
+def encode_chip(chip: str) -> int:
+    """Character code for one chip: a colored square, or a character."""
+    if chip in PALETTE:
+        return PALETTE[chip]
+    return charcodes.encode_char(chip)
 
 
-def rows(art: str) -> list[str]:
-    """The artwork's three lines, each padded out to 15 characters."""
+def _why_not(char: str) -> str:
+    """Why a character cannot start a chip, said usefully."""
+    if char.upper() not in charcodes.CHAR_TO_CODE:
+        return f"{char!r} is not a chip; the squares are {' '.join(PALETTE)}"
+    return (
+        f"{char!r} is unpaired: write a character as a space and then the "
+        f"character, {' ' + char!r}, to keep it two columns wide"
+    )
+
+
+def cells(line: str) -> list[str]:
+    """Split one line of an artwork into chips, two source columns each."""
+    line = line.replace(VARIATION_SELECTOR, "").rstrip()
+
+    chips = []
+    index = 0
+    while index < len(line):
+        char = line[index]
+        if char in PALETTE:
+            chips.append(char)
+            index += 1
+        elif char == " ":
+            # A space and then the character, so text occupies the same two
+            # columns a square does. Two spaces are a blank chip.
+            chips.append(line[index + 1] if index + 1 < len(line) else " ")
+            index += 2
+        else:
+            raise ValueError(_why_not(char))
+
+    if len(chips) > WIDTH:
+        raise ValueError(f"{line!r} is {len(chips)} chips, wider than {WIDTH}")
+    return chips
+
+
+def rows(art: str) -> list[list[str]]:
+    """The artwork's three rows, each padded out to 15 chips."""
     # Drop the newline after the opening quotes and the one before the closing
     # quotes, and nothing else: a blank top or bottom row is part of the art.
     body = art.removeprefix("\n").removesuffix("\n")
@@ -95,13 +135,7 @@ def rows(art: str) -> list[str]:
     if len(lines) != HEIGHT:
         raise ValueError(f"artwork has {len(lines)} rows, expected {HEIGHT}")
 
-    padded = []
-    for line in lines:
-        line = line.rstrip()
-        if len(line) > WIDTH:
-            raise ValueError(f"{line!r} is wider than {WIDTH} columns")
-        padded.append(line.ljust(WIDTH))
-    return padded
+    return [chips + [" "] * (WIDTH - len(chips)) for chips in map(cells, lines)]
 
 
 def to_grid(art: str) -> list[list[int]]:
@@ -110,9 +144,9 @@ def to_grid(art: str) -> list[list[int]]:
     left = (charcodes.COLS - WIDTH) // 2
 
     grid = charcodes.blank_grid()
-    for row, line in enumerate(rows(art)):
-        for col, char in enumerate(line):
-            grid[top + row][left + col] = encode_chip(char)
+    for row, chips in enumerate(rows(art)):
+        for col, chip in enumerate(chips):
+            grid[top + row][left + col] = encode_chip(chip)
     return grid
 
 

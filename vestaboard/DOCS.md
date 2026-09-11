@@ -49,8 +49,8 @@ actions:
 ```
 
 The names are the keys of `ARTWORKS` in `vestaboard_ha/art.py`: `sunset`,
-`heart`, `rainbow`, `invader`, `mountain`, `flower`. An unknown name is logged
-as an error and leaves the board alone.
+`heart`, `rainbow`, `invader`, `mountain`, `flower`, `party`. An unknown name is
+logged as an error and leaves the board alone.
 
 ## Changing what gets sent
 
