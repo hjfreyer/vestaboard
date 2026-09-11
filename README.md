@@ -94,22 +94,38 @@ Home Assistant sets to match the one configured for the house.
 
 ## Pixel art
 
-`art.py` holds the artwork, each piece a 15x3 block of chips written inline and
-centered on the board when it is sent:
+`art.py` holds the artwork, each piece 15 chips wide and 3 rows tall, written
+inline and centered on the board when it is sent:
 
 ```python
 ARTWORKS = {
     "sunset": """
-      YYY
-   YYOOOOOYY
-OOOORRRRRRROOOO
+⬛⬛⬛⬛⬛⬛🟨🟨🟨⬛⬛⬛⬛⬛⬛
+⬛⬛⬛🟨🟨🟧🟧🟧🟧🟧🟨🟨⬛⬛⬛
+🟧🟧🟧🟧🟥🟥🟥🟥🟥🟥🟥🟧🟧🟧🟧
 """,
 }
 ```
 
-A space is a blank chip, `R O Y G B V` are the colors, `W` white, `K` black and
-`#` a filled chip; anything else is taken as a literal character, so words can
-be mixed in. Lines are written flush left and may stop early.
+The squares are `🟥 🟧 🟨 🟩 🟦 🟪 ⬜`, and `⬛` is a blank chip -- the board's
+black chip looks no different, so there is only the one square for both.
+
+Every chip is two columns wide, because that is what a fixed-width font gives a
+colored square, and text has to keep to the same grid: **a character is written
+as a space and then the character.** So ` P A R T Y` is five chips, not ten,
+a bare `PARTY` is an error, and two spaces are a blank chip. That is what lets
+a piece mix the two:
+
+```python
+    "party": """
+🟥🟧🟨🟩🟦🟪🟥🟧🟨🟩🟦🟪🟥🟧🟨
+⬛⬛⬛⬛ P A R T Y !⬛⬛⬛⬛⬛
+🟪🟦🟩🟨🟧🟥🟪🟦🟩🟨🟧🟥🟪🟦🟩
+""",
+```
+
+Lines are written flush left and may stop early; the right side is padded with
+blanks.
 
 The rotation lives in Home Assistant rather than here, so it can be changed
 without pushing anything:
