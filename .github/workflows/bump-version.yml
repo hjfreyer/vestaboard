@@ -1,6 +1,6 @@
-# Supervisor only offers an "Update" button when the add-on's version changes,
-# so bump the patch version automatically whenever the add-on changes on main.
-name: Bump add-on version
+# Supervisor only offers an "Update" button when the version in config.yaml
+# changes, so bump the patch version automatically whenever the app changes.
+name: Bump app version
 
 on:
   push:
@@ -43,5 +43,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add vestaboard/config.yaml
           git diff --cached --quiet && exit 0
-          git commit -m "Bump add-on version [skip bump]"
+          git commit -m "Bump app version [skip bump]"
           git push

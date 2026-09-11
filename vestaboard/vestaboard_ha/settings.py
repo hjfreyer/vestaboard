@@ -1,8 +1,8 @@
-"""Configuration, loaded from add-on options or environment variables.
+"""Configuration, loaded from app options or environment variables.
 
 Two supported runtimes:
 
-* As a Home Assistant add-on. Supervisor writes the user's options to
+* As a Home Assistant app (formerly add-on). Supervisor writes the options to
   ``/data/options.json`` and injects ``SUPERVISOR_TOKEN``; Home Assistant is
   reachable through the Supervisor proxy, so there is nothing to configure.
 * Anywhere else (laptop, plain Docker). Everything comes from environment
@@ -18,7 +18,7 @@ from pathlib import Path
 
 OPTIONS_PATH = Path("/data/options.json")
 
-# Supervisor proxies the Home Assistant API for add-ons that ask for it.
+# Supervisor proxies the Home Assistant API for apps that ask for it.
 SUPERVISOR_REST = "http://supervisor/core/api"
 SUPERVISOR_WS = "ws://supervisor/core/websocket"
 

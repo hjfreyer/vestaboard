@@ -1,5 +1,5 @@
-# Fallback for a Home Assistant install without the add-on store (HA Container
-# or Core). Create a long-lived access token in Home Assistant under your
+# Fallback for a Home Assistant install without the app store (HA Container or
+# Core). Create a long-lived access token in Home Assistant under your
 # profile, put the values in a .env file next to this one, then:
 #
 #   docker compose up -d --build     # first run
