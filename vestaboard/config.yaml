@@ -1,5 +1,5 @@
 name: Vestaboard
-version: "0.1.5"
+version: "0.1.6"
 slug: vestaboard
 description: Pushes messages to my Vestaboard on a schedule and from Home Assistant events
 url: https://github.com/hjfreyer/vestaboard
