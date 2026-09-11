@@ -39,7 +39,8 @@ async def test_send_text_posts_key_and_payload():
     assert len(session.calls) == 1
     call = session.calls[0]
     assert call["json"] == {"text": "HELLO"}
-    assert call["headers"]["X-Vestaboard-Read-Write-Key"] == "secret"
+    assert call["url"] == "https://cloud.vestaboard.com/"
+    assert call["headers"]["X-Vestaboard-Token"] == "secret"
 
 
 @pytest.mark.asyncio
@@ -82,10 +83,10 @@ async def test_dry_run_sends_nothing():
 
 
 @pytest.mark.asyncio
-async def test_missing_key_is_an_error():
+async def test_missing_token_is_an_error():
     board = Vestaboard("", FakeSession(), min_interval=0)
 
-    with pytest.raises(BoardError, match="no Read/Write key"):
+    with pytest.raises(BoardError, match="no API token"):
         await board.send_text("HELLO")
 
 

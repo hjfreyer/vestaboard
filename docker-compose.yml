@@ -9,7 +9,7 @@ services:
     build: ./vestaboard
     restart: unless-stopped
     environment:
-      VESTABOARD_READ_WRITE_KEY: ${VESTABOARD_READ_WRITE_KEY}
+      VESTABOARD_API_TOKEN: ${VESTABOARD_API_TOKEN}
       HASS_URL: ${HASS_URL:-http://homeassistant.local:8123}
       HASS_TOKEN: ${HASS_TOKEN}
       LOG_LEVEL: ${LOG_LEVEL:-info}

@@ -12,10 +12,10 @@ boot: auto
 startup: application
 homeassistant_api: true
 options:
-  read_write_key: ""
+  api_token: ""
   log_level: info
   dry_run: false
 schema:
-  read_write_key: password
+  api_token: password
   log_level: list(debug|info|warning|error)
   dry_run: bool
