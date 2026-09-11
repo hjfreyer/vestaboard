@@ -28,3 +28,14 @@ async def good_morning(ctx: Context) -> None:
 async def front_door_opened(ctx: Context, event: dict[str, Any]) -> None:
     del event  # the rule does not need the details
     await ctx.board.send_text("WELCOME HOME")
+
+
+@on_state("counter.eggs")
+async def eggs_changed(ctx: Context, event: dict[str, Any]) -> None:
+    old = (event.get("old_state") or {}).get("state")
+    new = (event.get("new_state") or {}).get("state")
+    # Home Assistant also fires this event when only attributes change, and
+    # once per entity on restart (old_state is None). Neither is a new count.
+    if old is None or new == old or new in (None, "unknown", "unavailable"):
+        return
+    await ctx.board.send_text(f"EGGS: {new}")
