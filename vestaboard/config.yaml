@@ -1,0 +1,21 @@
+name: Vestaboard
+version: "0.1.0"
+slug: vestaboard
+description: Pushes messages to my Vestaboard on a schedule and from Home Assistant events
+url: https://github.com/hjfreyer/vestaboard
+arch:
+  - aarch64
+  - amd64
+  - armv7
+init: false
+boot: auto
+startup: application
+homeassistant_api: true
+options:
+  read_write_key: ""
+  log_level: info
+  dry_run: false
+schema:
+  read_write_key: password
+  log_level: list(debug|info|warning|error)
+  dry_run: bool

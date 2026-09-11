@@ -1,0 +1,47 @@
+# Supervisor only offers an "Update" button when the add-on's version changes,
+# so bump the patch version automatically whenever the add-on changes on main.
+name: Bump add-on version
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "vestaboard/**"
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    if: "!contains(github.event.head_commit.message, '[skip bump]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump the patch version
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import re
+
+          config = pathlib.Path("vestaboard/config.yaml")
+          text = config.read_text()
+          match = re.search(r'^version:\s*"(\d+)\.(\d+)\.(\d+)"', text, re.M)
+          if not match:
+              raise SystemExit("could not find a version in vestaboard/config.yaml")
+          major, minor, patch = (int(part) for part in match.groups())
+          new = f'version: "{major}.{minor}.{patch + 1}"'
+          config.write_text(text[: match.start()] + new + text[match.end() :])
+          print(new)
+          PY
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vestaboard/config.yaml
+          git diff --cached --quiet && exit 0
+          git commit -m "Bump add-on version [skip bump]"
+          git push
