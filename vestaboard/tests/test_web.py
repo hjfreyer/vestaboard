@@ -49,10 +49,19 @@ async def get_page(ctx, path="/"):
 
 
 async def post_capture(ctx):
+    return await post(ctx, {"capture": "board"})
+
+
+async def post_delete(ctx, name):
+    return await post(ctx, {"delete": name})
+
+
+async def post(ctx, form):
+    """Press one of the page's buttons, following the redirect it answers with."""
     client = TestClient(TestServer(web.build_app(ctx)))
     await client.start_server()
     try:
-        response = await client.post("/")
+        response = await client.post("/", data=form)
         return response, await response.text()
     finally:
         await client.close()
@@ -299,3 +308,68 @@ def test_the_redirect_goes_back_through_ingress():
     # Nothing that would send the browser somewhere else entirely.
     assert web._base_path(FakeRequest("//elsewhere.example")) == ""
     assert web._base_path(FakeRequest("https://elsewhere.example")) == ""
+
+
+def test_only_saved_pieces_can_be_deleted():
+    saved = web.page({"capture-1": A_PIECE}, saved={"capture-1"})
+    built_in = web.page({"rainbow": art.ARTWORKS["rainbow"]})
+
+    assert '<button name="delete" value="capture-1"' in saved
+    assert '<button name="delete"' not in built_in
+
+
+def test_the_delete_button_asks_first():
+    html = web.page({"capture-1": A_PIECE}, saved={"capture-1"})
+
+    assert 'onsubmit="return confirm(&quot;Delete capture-1?&quot;)"' in html
+
+
+def test_a_name_with_a_quote_in_it_does_not_break_the_asking():
+    html = web.page({"it's": A_PIECE}, saved={"it's"})
+
+    # The apostrophe reaches the confirm as text, not as the end of a string.
+    assert "confirm(&quot;Delete it&#x27;s?&quot;)" in html
+    assert '<button name="delete" value="it&#x27;s"' in html
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_the_piece_and_says_so(tmp_path):
+    ctx = FakeContext(tmp_path, FakeBoard(art.to_grid(A_PIECE)))
+    await post_capture(ctx)
+
+    response, _ = await post_delete(ctx, "capture-1")
+    _, body = await get_page(ctx, "/?deleted=capture-1")
+
+    assert ctx.art.saved() == {}
+    assert response.history[0].status == 303
+    assert response.history[0].headers["Location"] == "/?deleted=capture-1"
+    assert "Deleted capture-1." in body
+
+
+@pytest.mark.asyncio
+async def test_deleting_what_is_not_ours_says_why(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    response, body = await post_delete(ctx, "rainbow")
+
+    assert response.status == 200
+    assert response.history == ()
+    assert "Could not delete it" in body
+    assert '<p class="notice bad">' in body
+
+
+@pytest.mark.asyncio
+async def test_a_deleted_name_that_is_not_ours_says_nothing(tmp_path):
+    _, body = await get_page(FakeContext(tmp_path), "/?deleted=%3Cscript%3E")
+
+    assert '<p class="notice' not in body
+
+
+@pytest.mark.asyncio
+async def test_a_piece_still_here_is_not_announced_as_deleted(tmp_path):
+    ctx = FakeContext(tmp_path, FakeBoard(art.to_grid(A_PIECE)))
+    await post_capture(ctx)
+
+    _, body = await get_page(ctx, "/?deleted=capture-1")
+
+    assert "Deleted" not in body

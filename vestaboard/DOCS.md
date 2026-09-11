@@ -29,6 +29,9 @@ piece, which joins the rotation immediately. Captures are files under
 `/data/art` in the app's own storage, so they survive restarts and updates; the
 gallery marks them `saved`. Capturing the same board twice keeps one copy.
 
+Each saved piece has a **Delete** button, which asks first and then throws the
+file away. Pieces that come from `art.py` have no button: they are code.
+
 ## Actions
 
 The app listens for events, so an automation can put something on the board.

@@ -139,8 +139,10 @@ blanks, and a piece smaller than the board is centered on it.
 Pieces also come from files. `/data/art` is part of the app's own storage, so
 it survives restarts and updates, and every `.txt` file in it is a piece named
 after the file -- `sunrise.txt` is `sunrise`, written in the same squares as
-`art.py`. Delete the file and the piece is gone; rename it and the piece is
-renamed. A file wins over a piece of the same name in `art.py`, because a file
+`art.py`. Delete the file and the piece is gone -- which is what **Delete** on
+a card in the gallery does, after asking -- and rename it and the piece is
+renamed. Only saved pieces have the button; anything in `art.py` is deleted by
+editing `art.py`. A file wins over a piece of the same name in `art.py`, because a file
 is something you put there on purpose.
 
 The gallery's **Capture the board** button is the quick way to make one: it
