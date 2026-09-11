@@ -24,12 +24,6 @@ async def good_morning(ctx: Context) -> None:
     await ctx.board.send_text("GOOD MORNING")
 
 
-@on_state("binary_sensor.front_door", to="on")
-async def front_door_opened(ctx: Context, event: dict[str, Any]) -> None:
-    del event  # the rule does not need the details
-    await ctx.board.send_text("WELCOME HOME")
-
-
 @on_state("counter.eggs")
 async def eggs_changed(ctx: Context, event: dict[str, Any]) -> None:
     await ctx.board.send_text(f"EGGS: {event['new_state']['state']}")
