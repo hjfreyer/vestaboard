@@ -40,7 +40,7 @@ Use the **Fire event** action (under *Other actions* in the automation editor):
 | Event                  | What it does                                          |
 | ---------------------- | ----------------------------------------------------- |
 | `vestaboard_show_art`  | Shows a piece of pixel art. Optional `name` picks one. |
-| `vestaboard_eggs`      | Shows the egg count: `today`, `mtd` and `ytd`.        |
+| `vestaboard_eggs`      | Shows the egg numbers: `today`, `mtd` and `ytd`.      |
 
 A half-hourly rotation, then, is an automation and not a code change:
 
@@ -68,10 +68,11 @@ the only one shipped -- plus anything captured or saved into `/data/art`. The
 gallery lists the lot with the art next to each name. An unknown name is logged
 as an error and leaves the board alone.
 
-## The egg count
+## The egg numbers
 
-`vestaboard_eggs` puts a hen on the left of the board and three counts down the
-right -- today's, this month's and this year's:
+`vestaboard_eggs` puts a hen on the left of the board and three numbers down
+the right: `today`, a count of eggs, and `mtd` and `ytd`, eggs per day so far
+this month and this year.
 
 ```yaml
 alias: Eggs to the board
@@ -82,13 +83,15 @@ actions:
   - event: vestaboard_eggs
     event_data:
       today: "{{ states('counter.eggs') | int }}"
-      mtd: "{{ states('sensor.eggs_this_month') | int }}"
-      ytd: "{{ states('sensor.eggs_this_year') | int }}"
+      mtd: "{{ states('sensor.eggs_per_day_this_month') | float }}"
+      ytd: "{{ states('sensor.eggs_per_day_this_year') | float }}"
 ```
 
-The automation is what knows the counts; the app only lays them out. Each count
-gets four chips, so anything past 9999 shows as `999+`, and a value that is
-missing or is not a number shows as `?` -- the rest of the board still goes up.
+The automation is what knows the numbers; the app only lays them out. Each one
+gets four chips and keeps as many decimals as fit, so a daily average reads
+`2.75` under ten and `12.3` over it, and drops the decimal point entirely past
+a hundred. Anything past 9999 shows as `999+`, and a value that is missing or
+is not a number shows as `?` -- the other two still go up.
 
 ## Changing what gets sent
 

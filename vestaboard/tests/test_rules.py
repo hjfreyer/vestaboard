@@ -77,17 +77,27 @@ def right_of_the_hen(grid):
 
 
 @pytest.mark.asyncio
-async def test_the_counts_line_up_under_one_another(tmp_path):
+async def test_today_is_a_count_and_the_averages_keep_their_decimals(tmp_path):
     ctx = FakeContext(tmp_path)
 
-    await rules.eggs(ctx, {"today": 3, "mtd": 41, "ytd": 1207})
+    await rules.eggs(ctx, {"today": 3, "mtd": 2.75, "ytd": 2.413})
 
     [grid] = ctx.board.grids
     assert right_of_the_hen(grid) == [
         "TDY    3",
-        "MTD   41",
-        "YTD 1207",
+        "MTD 2.75",
+        "YTD 2.41",
     ]
+
+
+@pytest.mark.asyncio
+async def test_an_average_gives_up_a_decimal_to_fit(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    # Two places would be 12.35 and 10.00, a chip wider than there is room for.
+    await rules.eggs(ctx, {"today": 12, "mtd": 9.999, "ytd": 12.345})
+
+    assert right_of_the_hen(ctx.board.grids[0])[1:] == ["MTD 10.0", "YTD 12.3"]
 
 
 @pytest.mark.asyncio
@@ -119,17 +129,26 @@ async def test_a_missing_count_is_a_question_mark(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_an_average_of_a_hundred_or_more_drops_its_decimals(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    await rules.eggs(ctx, {"today": 1, "mtd": 123.4, "ytd": 1207})
+
+    assert right_of_the_hen(ctx.board.grids[0])[1:] == ["MTD  123", "YTD 1207"]
+
+
+@pytest.mark.asyncio
 async def test_counts_arriving_as_text_still_count(tmp_path):
     ctx = FakeContext(tmp_path)
 
     # A Home Assistant template renders to a string, not a number.
-    await rules.eggs(ctx, {"today": "3", "mtd": "41", "ytd": "1207"})
+    await rules.eggs(ctx, {"today": "3", "mtd": "2.75", "ytd": "2.41"})
 
     [grid] = ctx.board.grids
     assert right_of_the_hen(grid) == [
         "TDY    3",
-        "MTD   41",
-        "YTD 1207",
+        "MTD 2.75",
+        "YTD 2.41",
     ]
 
 
@@ -137,6 +156,6 @@ async def test_counts_arriving_as_text_still_count(tmp_path):
 async def test_a_count_too_big_for_four_chips_says_so(tmp_path):
     ctx = FakeContext(tmp_path)
 
-    await rules.eggs(ctx, {"today": 1, "mtd": 12, "ytd": 10000})
+    await rules.eggs(ctx, {"today": 1, "mtd": 1.2, "ytd": 10000})
 
     assert right_of_the_hen(ctx.board.grids[0])[2] == "YTD 999+"

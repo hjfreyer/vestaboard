@@ -92,20 +92,22 @@ editor that is **Add action → Other actions → Fire event**.
 
 `vestaboard_eggs` is the other action shipped, and shows what a rule can build:
 a hen in the seven chips on the left, `TDY`, `MTD` and `YTD` down the middle,
-and each count in the last four chips.
+and a number in the last four chips of each row. `today` is a count of eggs;
+`mtd` and `ytd` are eggs per day so far this month and this year.
 
 ```yaml
 actions:
   - event: vestaboard_eggs
     event_data:
       today: 3
-      mtd: 41
-      ytd: 1207
+      mtd: 2.75
+      ytd: 2.41
 ```
 
-The automation is what knows the counts; `rules.py` only lays them out. A count
-gets four chips, so anything past 9999 shows as `999+`, and one that is missing
-or is not a number shows as `?` rather than costing the board the other two.
+The automation is what knows the numbers; `rules.py` only lays them out. Four
+chips is what each gets, with as many decimals as fit in them -- `2.75` under
+ten, `12.3` over it, `999+` past the end -- and a number that is missing or is
+not a number at all shows as `?` rather than costing the board the other two.
 
 `ctx.board` sends to the board, `ctx.hass` reads state and calls services, and
 `ctx.art` is the art library: `ctx.art.grid("rainbow")` for a named piece,
