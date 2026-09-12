@@ -90,6 +90,23 @@ rename), so an action here is a custom event under our own name --
 and the rule is handed the event data as its second argument. In the automation
 editor that is **Add action → Other actions → Fire event**.
 
+`vestaboard_eggs` is the other action shipped, and shows what a rule can build:
+a hen in the seven chips on the left, `TDY`, `MTD` and `YTD` down the middle,
+and each count in the last four chips.
+
+```yaml
+actions:
+  - event: vestaboard_eggs
+    event_data:
+      today: 3
+      mtd: 41
+      ytd: 1207
+```
+
+The automation is what knows the counts; `rules.py` only lays them out. A count
+gets four chips, so anything past 9999 shows as `999+`, and one that is missing
+or is not a number shows as `?` rather than costing the board the other two.
+
 `ctx.board` sends to the board, `ctx.hass` reads state and calls services, and
 `ctx.art` is the art library: `ctx.art.grid("rainbow")` for a named piece,
 `ctx.art.grid()` for a random one.

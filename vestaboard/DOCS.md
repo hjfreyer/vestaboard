@@ -40,6 +40,7 @@ Use the **Fire event** action (under *Other actions* in the automation editor):
 | Event                  | What it does                                          |
 | ---------------------- | ----------------------------------------------------- |
 | `vestaboard_show_art`  | Shows a piece of pixel art. Optional `name` picks one. |
+| `vestaboard_eggs`      | Shows the egg count: `today`, `mtd` and `ytd`.        |
 
 A half-hourly rotation, then, is an automation and not a code change:
 
@@ -66,6 +67,28 @@ The names are the keys of `ARTWORKS` in `vestaboard_ha/art.py` -- `rainbow` is
 the only one shipped -- plus anything captured or saved into `/data/art`. The
 gallery lists the lot with the art next to each name. An unknown name is logged
 as an error and leaves the board alone.
+
+## The egg count
+
+`vestaboard_eggs` puts a hen on the left of the board and three counts down the
+right -- today's, this month's and this year's:
+
+```yaml
+alias: Eggs to the board
+triggers:
+  - trigger: state
+    entity_id: counter.eggs
+actions:
+  - event: vestaboard_eggs
+    event_data:
+      today: "{{ states('counter.eggs') | int }}"
+      mtd: "{{ states('sensor.eggs_this_month') | int }}"
+      ytd: "{{ states('sensor.eggs_this_year') | int }}"
+```
+
+The automation is what knows the counts; the app only lays them out. Each count
+gets four chips, so anything past 9999 shows as `999+`, and a value that is
+missing or is not a number shows as `?` -- the rest of the board still goes up.
 
 ## Changing what gets sent
 
