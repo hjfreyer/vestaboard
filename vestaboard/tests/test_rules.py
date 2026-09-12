@@ -66,3 +66,77 @@ async def test_no_name_means_any_artwork(tmp_path):
     [grid] = ctx.board.grids
     assert grid in [art.to_grid(piece) for piece in art.ARTWORKS.values()]
     assert len(grid) == charcodes.ROWS
+
+
+def right_of_the_hen(grid):
+    """Each row's label and count, as the text the board will show."""
+    return [
+        "".join(charcodes.CODE_TO_CHAR[code] for code in row[rules.LABEL_COL :])
+        for row in grid
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_counts_line_up_under_one_another(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    await rules.eggs(ctx, {"today": 3, "mtd": 41, "ytd": 1207})
+
+    [grid] = ctx.board.grids
+    assert right_of_the_hen(grid) == [
+        "TDY    3",
+        "MTD   41",
+        "YTD 1207",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_hen_has_the_seven_chips_on_the_left(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    await rules.eggs(ctx, {"today": 0, "mtd": 0, "ytd": 0})
+
+    [grid] = ctx.board.grids
+    assert len(grid) == charcodes.ROWS
+    assert all(len(row) == charcodes.COLS for row in grid)
+    for row, chips in enumerate(art.rows(rules.CHICKEN)):
+        assert len(chips) == rules.LABEL_COL
+        assert grid[row][: rules.LABEL_COL] == [art.encode_chip(c) for c in chips]
+
+
+@pytest.mark.asyncio
+async def test_a_missing_count_is_a_question_mark(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    await rules.eggs(ctx, {"today": 3})
+
+    [grid] = ctx.board.grids
+    assert right_of_the_hen(grid) == [
+        "TDY    3",
+        "MTD    ?",
+        "YTD    ?",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_counts_arriving_as_text_still_count(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    # A Home Assistant template renders to a string, not a number.
+    await rules.eggs(ctx, {"today": "3", "mtd": "41", "ytd": "1207"})
+
+    [grid] = ctx.board.grids
+    assert right_of_the_hen(grid) == [
+        "TDY    3",
+        "MTD   41",
+        "YTD 1207",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_count_too_big_for_four_chips_says_so(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    await rules.eggs(ctx, {"today": 1, "mtd": 12, "ytd": 10000})
+
+    assert right_of_the_hen(ctx.board.grids[0])[2] == "YTD 999+"
