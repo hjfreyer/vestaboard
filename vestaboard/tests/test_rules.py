@@ -68,7 +68,7 @@ async def test_today_is_a_count_and_the_averages_keep_their_decimals(tmp_path):
 
     [grid] = ctx.board.grids
     assert right_of_the_hen(grid) == [
-        "TDY    3",
+        "TODAY  3",
         "MTD 2.75",
         "YTD 2.41",
     ]
@@ -129,7 +129,7 @@ async def test_a_missing_count_is_a_question_mark(tmp_path):
 
     [grid] = ctx.board.grids
     assert right_of_the_hen(grid) == [
-        "TDY    3",
+        "TODAY  3",
         "MTD    ?",
         "YTD    ?",
     ]
@@ -153,10 +153,39 @@ async def test_counts_arriving_as_text_still_count(tmp_path):
 
     [grid] = ctx.board.grids
     assert right_of_the_hen(grid) == [
-        "TDY    3",
+        "TODAY  3",
         "MTD 2.75",
         "YTD 2.41",
     ]
+
+
+@pytest.mark.asyncio
+async def test_the_values_line_up_against_the_right_edge(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    # TODAY is two chips longer than the other labels, so its value starts
+    # further right -- but all three still end on the board's last chip.
+    await rules.eggs(ctx, {"today": 7, "mtd": 2.75, "ytd": 12.3})
+
+    [grid] = ctx.board.grids
+    assert [row[-1] for row in grid] == [charcodes.encode_char(c) for c in "753"]
+
+
+@pytest.mark.asyncio
+async def test_todays_shorter_field_says_when_it_runs_out(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    # Three chips, TODAY having taken the other two, so four digits do not go.
+    await rules.eggs(ctx, {"today": 1000, "mtd": 1.2, "ytd": 1.2})
+
+    assert right_of_the_hen(ctx.board.grids[0])[0] == "TODAY99+"
+
+
+def test_a_label_leaving_no_room_for_its_value_is_an_error(monkeypatch):
+    monkeypatch.setattr(rules, "EGG_ROWS", (("YESTERDAY", "today", 0),))
+
+    with pytest.raises(ValueError, match="too few"):
+        rules.eggs_grid({"today": 1})
 
 
 @pytest.mark.asyncio

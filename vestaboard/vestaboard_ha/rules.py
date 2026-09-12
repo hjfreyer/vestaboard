@@ -51,13 +51,20 @@ CHICKEN = """
 ⬜⬜⬜⬜🟧
 """
 
-#: One row per period: a three-chip label, a blank chip, then four chips of
-#: value. Seven for the hen and 3 + 1 + 4 for the row is the board's own 15.
-#: Today is a count of eggs and so a whole number; the other two are eggs per
-#: day, which want their decimals -- two of them at ``2.75``, one at ``12.3``.
-EGG_ROWS = (("TDY", "today", 0), ("MTD", "mtd", 2), ("YTD", "ytd", 2))
+#: One row per period: the label from the eighth chip, then the value against
+#: the board's right edge. Today is a count of eggs and so a whole number; the
+#: other two are eggs per day, which want their decimals -- two of them at
+#: ``2.75``, one at ``12.3``.
+EGG_ROWS = (("TODAY", "today", 0), ("MTD", "mtd", 2), ("YTD", "ytd", 2))
+
+#: The labels all start here, under one another, so TODAY reaches two chips
+#: further right than the three-letter ones do.
 LABEL_COL = 7
-VALUE_WIDTH = 4
+
+#: Where a value starts when its label leaves room for it, which MTD and YTD
+#: both do. TODAY does not, and its value starts after the label instead --
+#: fewer chips, but it is the row counting a single day, so it needs fewer.
+VALUE_COL = 11
 
 
 def _number(raw: Any) -> float | None:
@@ -73,8 +80,8 @@ def _number(raw: Any) -> float | None:
     return number
 
 
-def _value(raw: Any, places: int) -> str:
-    """One value in the four chips it has, with as many decimals as fit.
+def _value(raw: Any, places: int, width: int) -> str:
+    """One value in the chips its row has, with as many decimals as fit.
 
     ``places`` is what the value would like; a value too big for that many
     gives them up one at a time, so a daily average reads ``2.75`` where it
@@ -88,13 +95,13 @@ def _value(raw: Any, places: int) -> str:
 
     while places >= 0:
         text = f"{number:.{places}f}"
-        if len(text) <= VALUE_WIDTH:
+        if len(text) <= width:
             return text
         places -= 1
 
-    # Better something that says it ran off the end than four wrong digits.
-    _LOGGER.warning("eggs: %.0f does not fit in %d chips", number, VALUE_WIDTH)
-    return "9" * (VALUE_WIDTH - 1) + "+"
+    # Better something that says it ran off the end than that many wrong digits.
+    _LOGGER.warning("eggs: %.0f does not fit in %d chips", number, width)
+    return "9" * (width - 1) + "+"
 
 
 def eggs_grid(data: dict[str, Any]) -> list[list[int]]:
@@ -112,7 +119,17 @@ def eggs_grid(data: dict[str, Any]) -> list[list[int]]:
             grid[row][col] = art.encode_chip(chip)
 
     for row, (label, key, places) in enumerate(EGG_ROWS):
-        line = f"{label} {_value(data.get(key), places).rjust(VALUE_WIDTH)}"
+        # The value against the right edge, so the three line up under one
+        # another however much of the row its own label has taken.
+        start = max(VALUE_COL, LABEL_COL + len(label))
+        width = charcodes.COLS - start
+        if width < 2:
+            raise ValueError(
+                f"{label!r} leaves {width} chips for its value, which is too few"
+            )
+
+        line = label.ljust(start - LABEL_COL)
+        line += _value(data.get(key), places, width).rjust(width)
         for col, char in enumerate(line):
             grid[row][LABEL_COL + col] = charcodes.encode_char(char)
 
