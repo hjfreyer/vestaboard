@@ -46,9 +46,10 @@ async def eggs_changed(ctx: Context, event: dict[str, Any]) -> None:
     await ctx.board.send_text(f"EGGS: {event['new_state']['state']}")
 
 
-#: The hen, centered in the chips to the left of the labels. Squares as in
-#: art.py -- a red comb, a white body, an orange beak -- except for the eye,
-#: which is the board's own ``0``, drawn with a slash through it.
+#: The hen, in the chips to the left of the labels, flush with the board's own
+#: left edge. Squares as in art.py -- a red comb, a white body, an orange beak
+#: -- except for the eye, which is the board's own ``0``, drawn with a slash
+#: through it.
 CHICKEN = """
 ⬛⬛🟥🟥⬛
 ⬜⬜ 0⬜⬛
@@ -111,11 +112,9 @@ def eggs_grid(data: dict[str, Any]) -> list[list[int]]:
             f"the hen is {len(hen[0])} chips, wider than the {LABEL_COL} it has"
         )
 
-    # Centered in its chips, the way art.to_grid centers a piece on the board.
-    left = (LABEL_COL - len(hen[0])) // 2
     for row, chips in enumerate(hen):
         for col, chip in enumerate(chips):
-            grid[row][left + col] = art.encode_chip(chip)
+            grid[row][col] = art.encode_chip(chip)
 
     for row, (label, key, places) in enumerate(EGG_ROWS):
         line = f"{label} {_value(data.get(key), places).rjust(VALUE_WIDTH)}"

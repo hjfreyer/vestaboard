@@ -101,7 +101,7 @@ async def test_an_average_gives_up_a_decimal_to_fit(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_the_hen_is_centered_in_the_chips_left_of_the_labels(tmp_path):
+async def test_the_hen_is_flush_with_the_left_of_the_board(tmp_path):
     ctx = FakeContext(tmp_path)
 
     await rules.eggs(ctx, {"today": 0, "mtd": 0, "ytd": 0})
@@ -110,14 +110,11 @@ async def test_the_hen_is_centered_in_the_chips_left_of_the_labels(tmp_path):
     assert len(grid) == charcodes.ROWS
     assert all(len(row) == charcodes.COLS for row in grid)
 
-    hen = art.rows(rules.CHICKEN)
-    left = (rules.LABEL_COL - len(hen[0])) // 2
-    for row, chips in enumerate(hen):
-        # The hen's chips where they belong, and blanks either side of them --
-        # nothing of the hen reaches the labels.
-        expected = [charcodes.BLANK] * rules.LABEL_COL
-        for col, chip in enumerate(chips):
-            expected[left + col] = art.encode_chip(chip)
+    for row, chips in enumerate(art.rows(rules.CHICKEN)):
+        # The hen from the first chip, then blanks up to the labels -- nothing
+        # of the hen reaches them.
+        expected = [art.encode_chip(chip) for chip in chips]
+        expected += [charcodes.BLANK] * (rules.LABEL_COL - len(expected))
         assert grid[row][: rules.LABEL_COL] == expected
 
 
@@ -130,7 +127,7 @@ async def test_the_hens_eye_is_the_boards_zero(tmp_path):
     # The eye is a character and not a square: the board draws its zero with a
     # slash through it, which is what makes it read as an eye.
     [grid] = ctx.board.grids
-    assert charcodes.CODE_TO_CHAR[grid[1][3]] == "0"
+    assert charcodes.CODE_TO_CHAR[grid[1][2]] == "0"
 
 
 def test_a_hen_too_wide_for_its_chips_is_an_error(monkeypatch):
