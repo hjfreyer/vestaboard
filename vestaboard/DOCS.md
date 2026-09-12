@@ -86,11 +86,12 @@ actions:
       ytd: "{{ states('sensor.eggs_per_day_this_year') | float }}"
 ```
 
-The automation is what knows the numbers; the app only lays them out. Each one
-gets four chips and keeps as many decimals as fit, so a daily average reads
-`2.75` under ten and `12.3` over it, and drops the decimal point entirely past
-a hundred. Anything past 9999 shows as `999+`, and a value that is missing or
-is not a number shows as `?` -- the other two still go up.
+The automation is what knows the numbers; the app only lays them out. Each is
+written against the board's right edge, keeping as many decimals as fit in what
+its label has left it, so a daily average reads `2.75` under ten and `12.3`
+over it, and drops the decimal point entirely past a hundred. A number too big
+for its chips shows as `999+`, and one that is missing or is not a number shows
+as `?` -- the other two still go up.
 
 ## Changing what gets sent
 

@@ -94,8 +94,8 @@ an entity changing, on the sun going down, and it can be edited without pushing
 anything; a rule that ran itself would only be a second place to look.
 
 `vestaboard_eggs` is the other action shipped, and shows what a rule can build:
-a hen in the seven chips on the left, `TDY`, `MTD` and `YTD` down the middle,
-and a number in the last four chips of each row. `today` is a count of eggs;
+a hen in the seven chips on the left, `TODAY`, `MTD` and `YTD` down the middle,
+and a number against the right edge of each row. `today` is a count of eggs;
 `mtd` and `ytd` are eggs per day so far this month and this year.
 
 ```yaml
@@ -107,10 +107,12 @@ actions:
       ytd: 2.41
 ```
 
-The automation is what knows the numbers; `rules.py` only lays them out. Four
-chips is what each gets, with as many decimals as fit in them -- `2.75` under
+The automation is what knows the numbers; `rules.py` only lays them out. Each
+keeps as many decimals as fit in the chips its row has left it -- `2.75` under
 ten, `12.3` over it, `999+` past the end -- and a number that is missing or is
 not a number at all shows as `?` rather than costing the board the other two.
+`TODAY` is two letters longer than the other labels, so it leaves three chips
+rather than four; a day's eggs need fewer.
 
 `ctx.board` sends to the board, `ctx.hass` reads state and calls services, and
 `ctx.art` is the art library: `ctx.art.grid("rainbow")` for a named piece,
