@@ -55,34 +55,49 @@ CHICKEN = """
 """
 
 #: One row per period: a three-chip label, a blank chip, then four chips of
-#: count. Seven for the hen and 3 + 1 + 4 for the row is the board's own 15.
-EGG_ROWS = (("TDY", "today"), ("MTD", "mtd"), ("YTD", "ytd"))
+#: value. Seven for the hen and 3 + 1 + 4 for the row is the board's own 15.
+#: Today is a count of eggs and so a whole number; the other two are eggs per
+#: day, which want their decimals -- two of them at ``2.75``, one at ``12.3``.
+EGG_ROWS = (("TDY", "today", 0), ("MTD", "mtd", 2), ("YTD", "ytd", 2))
 LABEL_COL = 7
 VALUE_WIDTH = 4
 
 
-def _count(raw: Any) -> str:
-    """One count, in the four chips it has to fit into.
-
-    A count is a whole number of eggs, so anything fractional is rounded, and
-    anything that is not a number at all -- an automation that left the value
-    out, most likely -- shows as ``?`` rather than costing us the whole board.
-    """
+def _number(raw: Any) -> float | None:
+    """The value as a number, or None if the automation did not send one."""
     try:
         number = float(raw)
     except (TypeError, ValueError):
         _LOGGER.warning("eggs: %r is not a number", raw)
-        return "?"
+        return None
     if not math.isfinite(number):
-        _LOGGER.warning("eggs: %r is not a count", raw)
+        _LOGGER.warning("eggs: %r is not a number of eggs", raw)
+        return None
+    return number
+
+
+def _value(raw: Any, places: int) -> str:
+    """One value in the four chips it has, with as many decimals as fit.
+
+    ``places`` is what the value would like; a value too big for that many
+    gives them up one at a time, so a daily average reads ``2.75`` where it
+    can and ``12.3`` where it cannot. Anything that is not a number at all --
+    an automation that left the value out, most likely -- shows as ``?``
+    rather than costing us the whole board.
+    """
+    number = _number(raw)
+    if number is None:
         return "?"
 
-    text = f"{number:.0f}"
-    if len(text) > VALUE_WIDTH:
-        # Better something that says it ran off the end than four wrong digits.
-        _LOGGER.warning("eggs: %s does not fit in %d chips", text, VALUE_WIDTH)
-        return "9" * (VALUE_WIDTH - 1) + "+"
-    return text
+    while places >= 0:
+        text = f"{number:.{places}f}"
+        if len(text) <= VALUE_WIDTH:
+            return text
+        places -= 1
+
+    # Better something that says it ran off the end than four wrong digits.
+    _LOGGER.warning("eggs: %.0f does not fit in %d chips", number, VALUE_WIDTH)
+    return "9" * (VALUE_WIDTH - 1) + "+"
 
 
 def eggs_grid(data: dict[str, Any]) -> list[list[int]]:
@@ -93,8 +108,8 @@ def eggs_grid(data: dict[str, Any]) -> list[list[int]]:
         for col, chip in enumerate(chips):
             grid[row][col] = art.encode_chip(chip)
 
-    for row, (label, key) in enumerate(EGG_ROWS):
-        line = f"{label} {_count(data.get(key)).rjust(VALUE_WIDTH)}"
+    for row, (label, key, places) in enumerate(EGG_ROWS):
+        line = f"{label} {_value(data.get(key), places).rjust(VALUE_WIDTH)}"
         for col, char in enumerate(line):
             grid[row][LABEL_COL + col] = charcodes.encode_char(char)
 
@@ -105,16 +120,17 @@ def eggs_grid(data: dict[str, Any]) -> list[list[int]]:
 async def eggs(ctx: Context, data: dict[str, Any]) -> None:
     """Fire ``vestaboard_eggs`` in Home Assistant to put the egg count up.
 
-    It takes three numbers -- ``today``, ``mtd`` and ``ytd`` -- and draws them
-    down the right of the board against a hen on the left::
+    It takes three numbers and draws them down the right of the board against
+    a hen on the left: ``today``, a count of eggs, and ``mtd`` and ``ytd``,
+    eggs per day so far this month and this year::
 
         actions:
           - event: vestaboard_eggs
             event_data:
               today: 3
-              mtd: 41
-              ytd: 1207
+              mtd: 2.75
+              ytd: 2.41
 
-    An automation is what knows the counts; this only lays them out.
+    An automation is what knows the numbers; this only lays them out.
     """
     await ctx.board.send_characters(eggs_grid(data))
