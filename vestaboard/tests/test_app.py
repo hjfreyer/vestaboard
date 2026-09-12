@@ -128,7 +128,7 @@ def test_every_scheduled_rule_becomes_a_job(clean_registry):
 def test_shipped_rules_all_register():
     from vestaboard_ha import rules  # noqa: F401
 
-    assert registry.STATE_RULES
+    assert not registry.STATE_RULES
     assert [rule.event_type for rule in registry.ACTION_RULES] == [
         "vestaboard_show_art",
         "vestaboard_eggs",

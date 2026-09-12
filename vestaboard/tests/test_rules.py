@@ -23,22 +23,6 @@ class FakeContext:
 
 
 @pytest.mark.asyncio
-async def test_the_count_goes_to_the_board(tmp_path):
-    ctx = FakeContext(tmp_path)
-
-    await rules.eggs_changed(
-        ctx,
-        {
-            "entity_id": "counter.eggs",
-            "old_state": {"state": "11"},
-            "new_state": {"state": "12"},
-        },
-    )
-
-    assert ctx.board.sent == ["EGGS: 12"]
-
-
-@pytest.mark.asyncio
 async def test_the_named_artwork_goes_to_the_board(tmp_path):
     ctx = FakeContext(tmp_path)
 

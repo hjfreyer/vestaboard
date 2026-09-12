@@ -24,7 +24,7 @@ from typing import Any
 
 from . import art, charcodes
 from .app import Context
-from .registry import on_action, on_state
+from .registry import on_action
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -40,10 +40,6 @@ async def show_art(ctx: Context, data: dict[str, Any]) -> None:
     """
     await ctx.board.send_characters(ctx.art.grid(data.get("name")))
 
-
-@on_state("counter.eggs")
-async def eggs_changed(ctx: Context, event: dict[str, Any]) -> None:
-    await ctx.board.send_text(f"EGGS: {event['new_state']['state']}")
 
 
 #: The hen, in the chips to the left of the labels, flush with the board's own
