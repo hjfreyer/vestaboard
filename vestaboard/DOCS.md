@@ -1,7 +1,6 @@
 # Vestaboard
 
-Pushes messages to my Vestaboard on a schedule and in response to Home
-Assistant events.
+Pushes messages to my Vestaboard in response to Home Assistant events.
 
 ## Configuration
 

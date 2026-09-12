@@ -8,12 +8,11 @@ Each rule is an async function taking a Context, which gives you:
     await ctx.hass.get_state("sensor.x")    # read Home Assistant
     await ctx.hass.call_service("light", "turn_on", entity_id="light.y")
 
-A rule says when it runs: ``@on_schedule`` on a cron schedule, ``@on_state``
-when an entity changes, ``@on_action`` when Home Assistant fires the matching
-``vestaboard_*`` event, which is how an automation drives the board.
-
-Schedules use APScheduler cron fields (hour, minute, day_of_week, ...) in the
-container's timezone, which Home Assistant sets to match your own.
+There is one way a rule says when it runs: ``@on_action``, which runs it when
+Home Assistant fires the matching ``vestaboard_*`` event. An automation is what
+decides when that is -- on a clock, on an entity changing, on anything Home
+Assistant can trigger on -- so changing the when is an edit in the automation
+editor rather than a push to this file.
 """
 
 from __future__ import annotations
