@@ -1,1 +1,1 @@
-"""Pushes messages to a Vestaboard from schedules and Home Assistant events."""
+"""Pushes messages to a Vestaboard in response to Home Assistant events."""
