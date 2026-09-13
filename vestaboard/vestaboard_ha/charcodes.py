@@ -38,10 +38,14 @@ CHAR_TO_CODE.update(
     }
 )
 
-#: Code 62 is the degree sign on the flagship board's older flaps, and a red
-#: heart on a Note -- which is what this board is. Same code either way, so
-#: ``°`` and ``❤`` both encode to it; the heart is what ours shows.
+#: Code 62 is one flap with two meanings: a degree sign on the flagship board,
+#: and a red heart on a Note, which is what this board is. Both spellings
+#: encode to it, so a rule can write either.
 HEART = 62
+
+#: The heart goes in after the degree sign, so that it is the one a grid comes
+#: back as: a heart is what this board actually shows for the code.
+CHAR_TO_CODE["❤"] = HEART
 
 RED = 63
 ORANGE = 64
