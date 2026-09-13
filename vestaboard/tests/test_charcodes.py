@@ -12,6 +12,9 @@ def test_letters_and_digits_round_trip():
 
 def test_every_character_decodes_back():
     for char, code in charcodes.CHAR_TO_CODE.items():
+        # Code 62 is the one flap with two spellings; see below.
+        if code == charcodes.HEART:
+            continue
         assert charcodes.CODE_TO_CHAR[code] == char
 
     assert charcodes.CODE_TO_CHAR[charcodes.BLANK] == " "
@@ -46,3 +49,12 @@ def test_oversized_input_is_rejected():
         charcodes.encode_lines(["X" * (charcodes.COLS + 1)])
     with pytest.raises(ValueError):
         charcodes.encode_lines(["X"] * (charcodes.ROWS + 1))
+
+
+def test_the_heart_and_the_degree_sign_are_the_one_flap():
+    # 62 is a degree sign on the flagship board and a red heart on a Note, so
+    # both spellings encode to it. This board is a Note, so the heart is the
+    # one that comes back.
+    assert charcodes.encode_char("°") == charcodes.HEART
+    assert charcodes.encode_char("❤") == charcodes.HEART
+    assert charcodes.CODE_TO_CHAR[charcodes.HEART] == "❤"
