@@ -71,7 +71,8 @@ as an error and leaves the board alone.
 
 `vestaboard_eggs` puts a hen on the left of the board and three numbers down
 the right: `today`, a count of eggs, and `mtd` and `ytd`, eggs per day so far
-this month and this year.
+this month and this year. Which hen is a toss-up each time, from the few drawn
+into `rules.py`.
 
 ```yaml
 alias: Eggs to the board

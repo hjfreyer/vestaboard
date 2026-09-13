@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import math
+import random
 from typing import Any
 
 from . import art, charcodes
@@ -41,15 +42,23 @@ async def show_art(ctx: Context, data: dict[str, Any]) -> None:
 
 
 
-#: The hen, in the chips to the left of the labels, flush with the board's own
-#: left edge. Squares as in art.py -- a red comb, a white body, an orange beak
-#: -- except for the eye, which is the board's own ``0``, drawn with a slash
-#: through it.
-CHICKEN = """
+#: The hens, in the chips to the left of the labels and flush with the board's
+#: own left edge. One is picked at random each time the board goes up, so the
+#: eggs do not look the same every morning. Squares as in art.py, and a hen may
+#: be narrower than the chips it has; the first one's eye is the board's own
+#: ``0``, a character among its squares, drawn with a slash through it.
+CHICKENS = (
+    """
 ⬛⬛🟥🟥⬛
 ⬜⬜ 0⬜⬛
 ⬜⬜⬜⬜🟧
-"""
+""",
+    """
+⬛⬛⬛⬛⬜⬛
+⬜⬛⬛⬛⬜🟨
+⬛⬜⬛⬜🟥⬛
+""",
+)
 
 #: One row per period: the label from the eighth chip, then the value against
 #: the board's right edge. Today is a count of eggs and so a whole number; the
@@ -104,11 +113,15 @@ def _value(raw: Any, places: int, width: int) -> str:
     return "9" * (width - 1) + "+"
 
 
-def eggs_grid(data: dict[str, Any]) -> list[list[int]]:
-    """The egg board: the hen on the left, a labeled count on each row."""
+def eggs_grid(data: dict[str, Any], chicken: str | None = None) -> list[list[int]]:
+    """The egg board: a hen on the left, a labeled count on each row.
+
+    ``chicken`` is one of CHICKENS; None, which is what the rule passes, takes
+    one of them at random.
+    """
     grid = charcodes.blank_grid()
 
-    hen = art.rows(CHICKEN)
+    hen = art.rows(random.choice(CHICKENS) if chicken is None else chicken)
     if len(hen[0]) > LABEL_COL:
         raise ValueError(
             f"the hen is {len(hen[0])} chips, wider than the {LABEL_COL} it has"

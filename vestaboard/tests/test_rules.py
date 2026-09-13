@@ -84,41 +84,60 @@ async def test_an_average_gives_up_a_decimal_to_fit(tmp_path):
     assert right_of_the_hen(ctx.board.grids[0])[1:] == ["MTD 10.0", "YTD 12.3"]
 
 
+def chips_of(hen):
+    """A hen as it should land: from the first chip, then blanks up to the
+    labels, so nothing of the hen reaches them."""
+    rows = []
+    for chips in art.rows(hen):
+        codes = [art.encode_chip(chip) for chip in chips]
+        rows.append(codes + [charcodes.BLANK] * (rules.LABEL_COL - len(codes)))
+    return rows
+
+
+def test_every_hen_fits_the_chips_it_has():
+    for hen in rules.CHICKENS:
+        chips = art.rows(hen)  # raises if the hen does not parse
+        assert len(chips) == charcodes.ROWS
+        assert len(chips[0]) <= rules.LABEL_COL
+
+
+def test_every_hen_is_flush_with_the_left_of_the_board():
+    for hen in rules.CHICKENS:
+        grid = rules.eggs_grid({"today": 0, "mtd": 0, "ytd": 0}, hen)
+
+        assert len(grid) == charcodes.ROWS
+        assert all(len(row) == charcodes.COLS for row in grid)
+        assert [row[: rules.LABEL_COL] for row in grid] == chips_of(hen)
+
+
 @pytest.mark.asyncio
-async def test_the_hen_is_flush_with_the_left_of_the_board(tmp_path):
+async def test_the_hen_is_not_always_the_same_one(tmp_path):
     ctx = FakeContext(tmp_path)
 
-    await rules.eggs(ctx, {"today": 0, "mtd": 0, "ytd": 0})
+    for _ in range(40):
+        await rules.eggs(ctx, {"today": 1, "mtd": 1, "ytd": 1})
 
-    [grid] = ctx.board.grids
-    assert len(grid) == charcodes.ROWS
-    assert all(len(row) == charcodes.COLS for row in grid)
-
-    for row, chips in enumerate(art.rows(rules.CHICKEN)):
-        # The hen from the first chip, then blanks up to the labels -- nothing
-        # of the hen reaches them.
-        expected = [art.encode_chip(chip) for chip in chips]
-        expected += [charcodes.BLANK] * (rules.LABEL_COL - len(expected))
-        assert grid[row][: rules.LABEL_COL] == expected
+    drawn = {
+        tuple(tuple(row[: rules.LABEL_COL]) for row in grid)
+        for grid in ctx.board.grids
+    }
+    assert len(drawn) > 1
+    assert drawn <= {tuple(map(tuple, chips_of(hen))) for hen in rules.CHICKENS}
 
 
-@pytest.mark.asyncio
-async def test_the_hens_eye_is_the_boards_zero(tmp_path):
-    ctx = FakeContext(tmp_path)
+def test_a_hen_can_carry_a_character_among_its_squares():
+    # One hen has the board's 0 for an eye, which it draws with a slash through
+    # it. Squares aside, that has to survive as the character it is.
+    [hen] = [hen for hen in rules.CHICKENS if " 0" in hen]
 
-    await rules.eggs(ctx, {"today": 0, "mtd": 0, "ytd": 0})
+    grid = rules.eggs_grid({"today": 0, "mtd": 0, "ytd": 0}, hen)
 
-    # The eye is a character and not a square: the board draws its zero with a
-    # slash through it, which is what makes it read as an eye.
-    [grid] = ctx.board.grids
     assert charcodes.CODE_TO_CHAR[grid[1][2]] == "0"
 
 
-def test_a_hen_too_wide_for_its_chips_is_an_error(monkeypatch):
-    monkeypatch.setattr(rules, "CHICKEN", "⬜" * (rules.LABEL_COL + 1))
-
+def test_a_hen_too_wide_for_its_chips_is_an_error():
     with pytest.raises(ValueError, match="wider than"):
-        rules.eggs_grid({})
+        rules.eggs_grid({}, "⬜" * (rules.LABEL_COL + 1))
 
 
 @pytest.mark.asyncio
