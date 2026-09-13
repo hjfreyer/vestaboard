@@ -83,6 +83,16 @@ def test_every_piece_gets_a_card_and_all_of_its_chips():
     assert html.count('class="chip') == CHIPS_PER_PIECE * len(art.ARTWORKS)
 
 
+def test_a_heart_is_drawn_as_one_and_not_as_a_degree_sign():
+    html = web.page({"love": "\n❤️🟥❤️\n"})
+
+    # Code 62 is the degree sign in the character table, but this board is a
+    # Note, which draws it as a red heart -- so the gallery has to as well.
+    assert html.count('class="chip heart"') == 2
+    assert "&#10084;" in html
+    assert "°" not in html
+
+
 def test_a_short_line_is_padded_out_with_unlit_flaps():
     html = web.page({"corner": "\n🟥🟥🟥\n🟥\n\n"})
 

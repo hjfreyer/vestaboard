@@ -38,6 +38,11 @@ CHAR_TO_CODE.update(
     }
 )
 
+#: Code 62 is the degree sign on the flagship board's older flaps, and a red
+#: heart on a Note -- which is what this board is. Same code either way, so
+#: ``°`` and ``❤`` both encode to it; the heart is what ours shows.
+HEART = 62
+
 RED = 63
 ORANGE = 64
 YELLOW = 65
