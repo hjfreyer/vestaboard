@@ -98,7 +98,8 @@ a hen in the seven chips on the left, `TODAY`, `MTD` and `YTD` down the middle,
 and a number against the right edge of each row. `today` is a count of eggs;
 `mtd` and `ytd` are eggs per day so far this month and this year. The hen is
 one of the `CHICKENS` in `rules.py`, picked at random, so add another there and
-it joins the rotation.
+it joins the rotation -- three rows of seven chips, blanks written out to the
+last one.
 
 ```yaml
 actions:

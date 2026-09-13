@@ -85,23 +85,19 @@ async def test_an_average_gives_up_a_decimal_to_fit(tmp_path):
 
 
 def chips_of(hen):
-    """A hen as it should land: from the first chip, then blanks up to the
-    labels, so nothing of the hen reaches them."""
-    rows = []
-    for chips in art.rows(hen):
-        codes = [art.encode_chip(chip) for chip in chips]
-        rows.append(codes + [charcodes.BLANK] * (rules.LABEL_COL - len(codes)))
-    return rows
+    """A hen's chips as character codes, which is what it should land as."""
+    return [[art.encode_chip(chip) for chip in chips] for chips in art.rows(hen)]
 
 
-def test_every_hen_fits_the_chips_it_has():
+def test_every_hen_is_written_out_to_the_chips_it_fills():
     for hen in rules.CHICKENS:
         chips = art.rows(hen)  # raises if the hen does not parse
         assert len(chips) == charcodes.ROWS
-        assert len(chips[0]) <= rules.LABEL_COL
+        # Every row to the last chip, so no hen leans on being padded out.
+        assert [len(row) for row in chips] == [rules.LABEL_COL] * charcodes.ROWS
 
 
-def test_every_hen_is_flush_with_the_left_of_the_board():
+def test_every_hen_fills_the_chips_left_of_the_labels():
     for hen in rules.CHICKENS:
         grid = rules.eggs_grid({"today": 0, "mtd": 0, "ytd": 0}, hen)
 
@@ -135,9 +131,15 @@ def test_a_hen_can_carry_a_character_among_its_squares():
     assert charcodes.CODE_TO_CHAR[grid[1][2]] == "0"
 
 
-def test_a_hen_too_wide_for_its_chips_is_an_error():
-    with pytest.raises(ValueError, match="wider than"):
-        rules.eggs_grid({}, "⬜" * (rules.LABEL_COL + 1))
+def test_a_hen_that_is_not_the_size_of_its_chips_is_an_error():
+    one_row = "⬜" * rules.LABEL_COL
+    too_wide = "\n".join([one_row + "⬜"] * charcodes.ROWS)
+    too_narrow = "\n".join([one_row[:-1]] * charcodes.ROWS)
+    too_short = "\n".join([one_row] * (charcodes.ROWS - 1))
+
+    for hen in (too_wide, too_narrow, too_short):
+        with pytest.raises(ValueError, match="a hen is 3 rows of 7 chips"):
+            rules.eggs_grid({}, hen)
 
 
 @pytest.mark.asyncio
