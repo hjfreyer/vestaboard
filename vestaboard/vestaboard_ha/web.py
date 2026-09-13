@@ -244,6 +244,9 @@ code {
   top: 50%;
   border-top: 1px solid var(--seam);
 }
+/* The heart is a character rather than a colored chip, so it is printed on a
+   dark flap like any other -- in red, which is how the board prints it. */
+.heart { color: var(--red); }
 .red { background: var(--red); }
 .orange { background: var(--orange); }
 .yellow { background: var(--yellow); }
@@ -271,6 +274,11 @@ def chip(code: int) -> str:
     color = CHIP_COLORS.get(code)
     if color is not None:
         return f'<span class="chip {color}"></span>'
+
+    if code == charcodes.HEART:
+        # The character table has 62 as the degree sign, which is what an older
+        # board's flaps carry; ours is a Note, and draws it as a heart.
+        return '<span class="chip heart">&#10084;</span>'
 
     char = charcodes.CODE_TO_CHAR.get(code, " ")
     if char == " ":

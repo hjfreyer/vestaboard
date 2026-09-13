@@ -33,8 +33,10 @@ _LOGGER = logging.getLogger(__name__)
 #: Some sources paste the squares with a variation selector attached.
 VARIATION_SELECTOR = "\ufe0f"
 
-#: One square per color of chip. ⬛ is the board's off state; a black chip
-#: looks no different, so there is no separate square for one.
+#: One square per chip that is not a character. ⬛ is the board's off state; a
+#: black chip looks no different, so there is no separate square for one. ❤ is
+#: the odd one out: it is character code 62, which a Note draws as a red heart,
+#: and it earns a square because a piece wants to show one.
 PALETTE: dict[str, int] = {
     "⬛": charcodes.BLANK,
     "🟥": charcodes.RED,
@@ -44,6 +46,7 @@ PALETTE: dict[str, int] = {
     "🟦": charcodes.BLUE,
     "🟪": charcodes.VIOLET,
     "⬜": charcodes.WHITE,
+    "❤": charcodes.HEART,
 }
 
 ARTWORKS: dict[str, str] = {
@@ -130,6 +133,10 @@ def to_grid(art: str) -> list[list[int]]:
 #: The squares by code, for writing a grid back out. ⬛ is first in the palette,
 #: so a blank chip comes back as ⬛ rather than as two spaces.
 SQUARES: dict[int, str] = {code: square for square, code in PALETTE.items()}
+
+# The heart goes back out with its variation selector, so that it is two columns
+# wide like every other chip; ``cells`` strips it again on the way back in.
+SQUARES[charcodes.HEART] = "❤" + VARIATION_SELECTOR
 
 
 def render_chip(code: int) -> str:

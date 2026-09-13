@@ -121,3 +121,21 @@ def test_text_and_art_share_a_piece():
 
     assert charcodes.RED in grid[0]
     assert word == [code for code in grid[1] if code != charcodes.BLANK]
+
+
+def test_the_heart_is_a_square_over_a_character_code():
+    # Code 62 is the degree sign on older flaps and a red heart on a Note.
+    # Either way it is one code, so both spellings reach it.
+    assert art.encode_chip("❤") == charcodes.HEART
+    assert charcodes.encode_char("°") == charcodes.HEART
+
+
+def test_a_heart_survives_being_written_out_and_read_back():
+    grid = art.to_grid("❤️🟥❤️\n")
+
+    written = art.render(grid)
+
+    assert "❤" in written
+    # Two columns wide like every other chip, and it parses back to itself.
+    assert art.rows(written) == art.rows(art.render(art.to_grid(written)))
+    assert art.to_grid(written) == grid

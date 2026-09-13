@@ -46,7 +46,8 @@ async def show_art(ctx: Context, data: dict[str, Any]) -> None:
 #: own left edge. One is picked at random each time the board goes up, so the
 #: eggs do not look the same every morning. Squares as in art.py, and a hen may
 #: be narrower than the chips it has; the first one's eye is the board's own
-#: ``0``, a character among its squares, drawn with a slash through it.
+#: ``0``, a character among its squares, drawn with a slash through it, and
+#: the third's ❤ is character code 62, which this board draws as a red heart.
 CHICKENS = (
     """
 ⬛⬛🟥🟥⬛
@@ -57,6 +58,11 @@ CHICKENS = (
 ⬛⬛⬛⬛⬜⬛
 ⬜⬛⬛⬛⬜🟨
 ⬛⬜⬛⬜🟥⬛
+""",
+    """
+⬜⬜⬜⬜❤️🟧⬜
+⬛⬛⬛⬛⬜⬜⬜
+⬜⬛⬛⬛⬜⬜⬜
 """,
 )
 

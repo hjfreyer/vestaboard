@@ -135,8 +135,11 @@ ARTWORKS = {
 }
 ```
 
-The squares are `🟥 🟧 🟨 🟩 🟦 🟪 ⬜`, and `⬛` is a blank chip -- the board's
-black chip looks no different, so there is only the one square for both.
+The squares are `🟥 🟧 🟨 🟩 🟦 🟪 ⬜ ❤️`, and `⬛` is a blank chip -- the board's
+black chip looks no different, so there is only the one square for both. The
+heart is not a color at all: it is character code 62, which this board -- a
+Note -- draws as a red heart, where an older flagship board's flaps carry a
+degree sign there instead.
 
 Every chip is two columns wide, because that is what a fixed-width font gives a
 colored square, and text has to keep to the same grid: **a character is written
