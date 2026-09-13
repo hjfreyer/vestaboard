@@ -42,22 +42,22 @@ async def show_art(ctx: Context, data: dict[str, Any]) -> None:
 
 
 
-#: The hens, in the chips to the left of the labels and flush with the board's
-#: own left edge. One is picked at random each time the board goes up, so the
-#: eggs do not look the same every morning. Squares as in art.py, and a hen may
-#: be narrower than the chips it has; the first one's eye is the board's own
-#: ``0``, a character among its squares, drawn with a slash through it, and
-#: the third's ❤ is character code 62, which this board draws as a red heart.
+#: The hens, filling the chips to the left of the labels. One is picked at
+#: random each time the board goes up, so the eggs do not look the same every
+#: morning. Each is exactly the LABEL_COL chips it has to fill, written out to
+#: the last one so the source is the shape the board gets. Squares as in
+#: art.py; the first hen's eye is the board's own ``0``, a character among its
+#: squares, and the third's ❤ is code 62, which this board draws as a heart.
 CHICKENS = (
     """
-⬛⬛🟥🟥⬛
-⬜⬜ 0⬜⬛
-⬜⬜⬜⬜🟧
+⬛⬛🟥🟥⬛⬛⬛
+⬜⬜ 0⬜⬛⬛⬛
+⬜⬜⬜⬜🟧⬛⬛
 """,
     """
-⬛⬛⬛⬛⬜⬛
-⬜⬛⬛⬛⬜🟨
-⬛⬜⬛⬜🟥⬛
+⬛⬛⬛⬛⬜⬛⬛
+⬜⬛⬛⬛⬜🟨⬛
+⬛⬜⬛⬜🟥⬛⬛
 """,
     """
 ⬜⬜⬜⬜❤️🟧⬜
@@ -128,9 +128,10 @@ def eggs_grid(data: dict[str, Any], chicken: str | None = None) -> list[list[int
     grid = charcodes.blank_grid()
 
     hen = art.rows(random.choice(CHICKENS) if chicken is None else chicken)
-    if len(hen[0]) > LABEL_COL:
+    if (len(hen), len(hen[0])) != (charcodes.ROWS, LABEL_COL):
         raise ValueError(
-            f"the hen is {len(hen[0])} chips, wider than the {LABEL_COL} it has"
+            f"a hen is {charcodes.ROWS} rows of {LABEL_COL} chips, not "
+            f"{len(hen)} of {len(hen[0])}"
         )
 
     for row, chips in enumerate(hen):
