@@ -96,7 +96,9 @@ anything; a rule that ran itself would only be a second place to look.
 `vestaboard_eggs` is the other action shipped, and shows what a rule can build:
 a hen in the seven chips on the left, `TODAY`, `MTD` and `YTD` down the middle,
 and a number against the right edge of each row. `today` is a count of eggs;
-`mtd` and `ytd` are eggs per day so far this month and this year.
+`mtd` and `ytd` are eggs per day so far this month and this year. The hen is
+one of the `CHICKENS` in `rules.py`, picked at random, so add another there and
+it joins the rotation.
 
 ```yaml
 actions:
