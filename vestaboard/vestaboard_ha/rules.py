@@ -46,8 +46,8 @@ async def show_art(ctx: Context, data: dict[str, Any]) -> None:
 #: random each time the board goes up, so the eggs do not look the same every
 #: morning. Each is exactly the LABEL_COL chips it has to fill, written out to
 #: the last one so the source is the shape the board gets. Squares as in
-#: art.py; the first hen's eye is the board's own ``0``, a character among its
-#: squares, and the third's ❤ is code 62, which this board draws as a heart.
+#: art.py, with characters among them where a square will not do: a ``0``, a
+#: ``,``, and ❤ for code 62, which this board draws as a red heart.
 CHICKENS = (
     """
 ⬛⬛🟥🟥⬛⬛⬛
@@ -63,6 +63,11 @@ CHICKENS = (
 ⬜⬜⬜⬜❤️🟧⬜
 ⬛⬛⬛⬛⬜⬜⬜
 ⬜⬛⬛⬛⬜⬜⬜
+""",
+    """
+⬛⬜⬜🟥⬜⬜⬛
+🟥 ,⬜🟥⬜ ,🟥
+🟥⬜⬜🟨⬜⬜🟥
 """,
 )
 
