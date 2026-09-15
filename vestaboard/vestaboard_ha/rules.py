@@ -41,6 +41,35 @@ async def show_art(ctx: Context, data: dict[str, Any]) -> None:
     await ctx.board.send_characters(ctx.art.grid(data.get("name")))
 
 
+@on_action("text")
+async def text(ctx: Context, data: dict[str, Any]) -> None:
+    """Fire ``vestaboard_text`` in Home Assistant to put a message on the board.
+
+    The message is whatever ``text`` the automation sends, and the board is
+    what lays it out -- centered, wrapped over as many of the three rows as it
+    needs::
+
+        actions:
+          - event: vestaboard_text
+            event_data:
+              text: "BACK IN AN HOUR"
+
+    A template is the point of it: the automation works out what to say, and
+    this puts it up without a push to this file.
+
+    Anything that is not already a string is written out as one, so a number
+    from a template goes up as the digits it is.
+    """
+    raw = data.get("text")
+    message = "" if raw is None else str(raw).strip()
+    if not message:
+        # The Cloud API rejects a blank message, and an automation that sent
+        # one meant to say something; leave the board showing what it has.
+        _LOGGER.warning("text: nothing to say, %r has no text", data)
+        return
+
+    await ctx.board.send_text(message)
+
 
 #: The hens, filling the chips to the left of the labels. One is picked at
 #: random each time the board goes up, so the eggs do not look the same every

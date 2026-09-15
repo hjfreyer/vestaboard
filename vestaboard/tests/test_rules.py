@@ -52,6 +52,39 @@ async def test_no_name_means_any_artwork(tmp_path):
     assert len(grid) == charcodes.ROWS
 
 
+@pytest.mark.asyncio
+async def test_the_text_goes_to_the_board_as_sent(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    await rules.text(ctx, {"text": "BACK IN AN HOUR"})
+
+    assert ctx.board.sent == ["BACK IN AN HOUR"]
+
+
+@pytest.mark.asyncio
+async def test_text_from_a_template_still_goes_up(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    # A template renders with whatever whitespace the YAML block left it, and
+    # one that counts something renders to a number rather than a string.
+    await rules.text(ctx, {"text": "  71 DEGREES\n"})
+    await rules.text(ctx, {"text": 71})
+
+    assert ctx.board.sent == ["71 DEGREES", "71"]
+
+
+@pytest.mark.asyncio
+async def test_nothing_to_say_leaves_the_board_alone(tmp_path, caplog):
+    ctx = FakeContext(tmp_path)
+
+    # The Cloud API rejects a blank message, so none of these is worth sending.
+    for data in ({}, {"text": ""}, {"text": "   "}, {"text": None}):
+        await rules.text(ctx, data)
+
+    assert ctx.board.sent == []
+    assert caplog.text.count("no text") == 4
+
+
 def right_of_the_hen(grid):
     """Each row's label and count, as the text the board will show."""
     return [
