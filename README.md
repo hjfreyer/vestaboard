@@ -93,6 +93,20 @@ That is deliberate. Home Assistant already knows how to trigger on a clock, on
 an entity changing, on the sun going down, and it can be edited without pushing
 anything; a rule that ran itself would only be a second place to look.
 
+`vestaboard_text` is the plainest of the actions shipped: it puts the `text` it
+is given on the board, laid out by the board itself, so an automation with a
+template can say something new without a push here.
+
+```yaml
+actions:
+  - event: vestaboard_text
+    event_data:
+      text: "{{ states('sensor.outside_temperature') | round }} DEGREES"
+```
+
+An event with no `text`, or nothing but spaces, is logged and leaves the board
+alone; the Cloud API does not take a blank message.
+
 `vestaboard_eggs` is the other action shipped, and shows what a rule can build:
 a hen in the seven chips on the left, `TODAY`, `MTD` and `YTD` down the middle,
 and a number against the right edge of each row. `today` is a count of eggs;

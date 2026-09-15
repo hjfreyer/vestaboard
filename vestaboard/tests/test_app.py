@@ -101,5 +101,6 @@ def test_shipped_rules_all_register():
 
     assert [rule.event_type for rule in registry.ACTION_RULES] == [
         "vestaboard_show_art",
+        "vestaboard_text",
         "vestaboard_eggs",
     ]

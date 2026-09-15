@@ -39,6 +39,7 @@ Use the **Fire event** action (under *Other actions* in the automation editor):
 | Event                  | What it does                                          |
 | ---------------------- | ----------------------------------------------------- |
 | `vestaboard_show_art`  | Shows a piece of pixel art. Optional `name` picks one. |
+| `vestaboard_text`      | Shows the `text` it is given, laid out by the board.   |
 | `vestaboard_eggs`      | Shows the egg numbers: `today`, `mtd` and `ytd`.      |
 
 A half-hourly rotation, then, is an automation and not a code change:
@@ -66,6 +67,28 @@ The names are the keys of `ARTWORKS` in `vestaboard_ha/art.py` -- `rainbow` is
 the only one shipped -- plus anything captured or saved into `/data/art`. The
 gallery lists the lot with the art next to each name. An unknown name is logged
 as an error and leaves the board alone.
+
+## A message
+
+`vestaboard_text` puts whatever you give it on the board, and the board is what
+lays it out -- centered, wrapped over as many of the three rows as it needs.
+
+```yaml
+alias: Say the temperature
+triggers:
+  - trigger: time
+    at: "07:00:00"
+actions:
+  - event: vestaboard_text
+    event_data:
+      text: "{{ states('sensor.outside_temperature') | round }} DEGREES"
+```
+
+A template is the point of it: the automation works out what to say without a
+push to `rules.py`. An event with no `text`, or with nothing but spaces, is
+logged and leaves the board showing what it has -- the Cloud API does not take
+a blank message. Anything else goes to the board as written, so a message the
+board will not take is an error in the log and nothing on the board.
 
 ## The egg numbers
 
