@@ -344,9 +344,9 @@ def page(
     if artworks:
         count = len(artworks)
         summary = (
-            f"{count} piece{'' if count == 1 else 's'}. Pick one on the "
-            "device's Piece select, or fire <code>vestaboard_show_art</code> "
-            "with a <code>name</code> in <code>event_data</code>."
+            f"{count} piece{'' if count == 1 else 's'}. Fire "
+            "<code>vestaboard_show_art</code> for a random one, or name a piece "
+            "in <code>event_data</code> to ask for it."
         )
         cards = "".join(
             piece(name, artwork, saved=name in saved)
@@ -452,8 +452,6 @@ async def capture(request: web.Request, ctx: Any) -> web.Response:
         _LOGGER.warning("could not capture the board: %s", exc)
         return show(ctx.art, f"Could not capture the board: {exc}", bad_news=True)
 
-    # A new piece is a new option on the device's Piece select.
-    await ctx.device.library_changed()
     key = "saved" if saved.is_new else "again"
     raise web.HTTPSeeOther(f"{_base_path(request)}/?{urlencode({key: saved.name})}")
 
@@ -466,7 +464,6 @@ async def delete(request: web.Request, ctx: Any, name: str) -> web.Response:
         _LOGGER.warning("could not delete %s: %s", name, exc)
         return show(ctx.art, f"Could not delete it: {exc}", bad_news=True)
 
-    await ctx.device.library_changed()
     raise web.HTTPSeeOther(f"{_base_path(request)}/?{urlencode({'deleted': name})}")
 
 

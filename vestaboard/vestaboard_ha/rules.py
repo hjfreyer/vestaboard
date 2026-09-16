@@ -5,16 +5,12 @@ Each rule is an async function taking a Context, which gives you:
     ctx.board.send_text("HELLO")            # let the board lay it out
     ctx.board.send_lines(["HELLO", "YOU"])  # exact placement, 3 lines x 15 cols
     ctx.board.send_characters(ctx.art.grid())   # a piece of art, or a grid
-    ctx.device.piece, ctx.device.message    # the device's controls, as set
     await ctx.hass.get_state("sensor.x")    # read Home Assistant
     await ctx.hass.call_service("light", "turn_on", entity_id="light.y")
 
-There are two kinds. A ``@channel`` is something the board can be tuned to:
-it draws the board from the device's controls, and Home Assistant's Channel
-select is the list of them. An ``@on_action`` runs when Home Assistant fires
-the matching ``vestaboard_*`` event, and is the remote control: it sets a
-control or two and tunes to a channel. An automation is what decides when
-either happens -- on a clock, on an entity changing, on anything Home
+There is one way a rule says when it runs: ``@on_action``, which runs it when
+Home Assistant fires the matching ``vestaboard_*`` event. An automation is what
+decides when that is -- on a clock, on an entity changing, on anything Home
 Assistant can trigger on -- so changing the when is an edit in the automation
 editor rather than a push to this file.
 """
@@ -28,78 +24,30 @@ from typing import Any
 
 from . import art, charcodes
 from .app import Context
-from .registry import channel, on_action
+from .registry import on_action
 
 _LOGGER = logging.getLogger(__name__)
-
-
-@channel("hold", label="Hold")
-async def hold(ctx: Context) -> str | None:
-    """Leave the board alone. Whatever is on it stays, and nothing redraws it.
-
-    The channel a fresh install starts on, so that installing the app changes
-    nothing until somebody picks something -- and the one to pick when the
-    board has been written on by hand and should stay that way.
-    """
-    return None
-
-
-@channel("art", label="Art", uses=("piece", "rotation"))
-async def art_channel(ctx: Context) -> str | None:
-    """Pixel art: the piece the Piece select names, or a random one.
-
-    With Piece on ``Random`` the board changes every Art rotation minutes,
-    never to the piece already up; set the rotation to 0 to keep one. Naming a
-    piece holds that piece, and a piece that has since been deleted from the
-    gallery falls back to a random one rather than to nothing.
-    """
-    name = ctx.device.piece
-    if name is not None and name not in ctx.art.pieces():
-        _LOGGER.warning("no piece named %r any more; showing one at random", name)
-        name = None
-
-    await ctx.board.send_characters(ctx.art.grid(name))
-    if name is None and ctx.device.rotation:
-        ctx.device.redraw_in(ctx.device.rotation * 60)
-    return ctx.art.last_shown
-
-
-@channel("message", label="Message", uses=("message",))
-async def message_channel(ctx: Context) -> str | None:
-    """Whatever the Message text says, laid out by the board itself.
-
-    Centered and wrapped over as many of the three rows as it needs. An empty
-    message clears the board, which the Cloud API will not do for a blank
-    string, so it goes up as a grid of blank chips.
-    """
-    text = ctx.device.message.strip()
-    if not text:
-        await ctx.board.send_characters(charcodes.blank_grid())
-        return None
-    await ctx.board.send_text(text)
-    return text
 
 
 @on_action("show_art")
 async def show_art(ctx: Context, data: dict[str, Any]) -> None:
     """Fire ``vestaboard_show_art`` in Home Assistant to put art on the board.
 
-    With no ``event_data``, a random piece, and the Piece select goes back to
-    ``Random``; with ``name: rainbow``, that piece, held. Either way the board
-    is on the Art channel afterwards. A piece that does not exist is an error
-    in the log, and the board is left alone.
+    With no ``event_data``, a random piece; with ``name: rainbow``, that one. The
+    pieces are the ones in ``art.py`` and the ones captured into the gallery.
+    An automation on a half-hourly time pattern is what makes it a rotation --
+    see the README.
     """
-    await ctx.device.tune("art", piece=data.get("name"))
+    await ctx.board.send_characters(ctx.art.grid(data.get("name")))
 
 
 @on_action("text")
 async def text(ctx: Context, data: dict[str, Any]) -> None:
     """Fire ``vestaboard_text`` in Home Assistant to put a message on the board.
 
-    The message is whatever ``text`` the automation sends; it becomes the
-    device's Message and the board tunes to the Message channel, where the
-    board lays it out -- centered, wrapped over as many of the three rows as
-    it needs::
+    The message is whatever ``text`` the automation sends, and the board is
+    what lays it out -- centered, wrapped over as many of the three rows as it
+    needs::
 
         actions:
           - event: vestaboard_text
@@ -115,12 +63,12 @@ async def text(ctx: Context, data: dict[str, Any]) -> None:
     raw = data.get("text")
     message = "" if raw is None else str(raw).strip()
     if not message:
-        # An automation that sent nothing meant to say something; leave the
-        # board, and the Message, as they are.
+        # The Cloud API rejects a blank message, and an automation that sent
+        # one meant to say something; leave the board showing what it has.
         _LOGGER.warning("text: nothing to say, %r has no text", data)
         return
 
-    await ctx.device.tune("message", message=message)
+    await ctx.board.send_text(message)
 
 
 #: The hens, filling the chips to the left of the labels. One is picked at
@@ -242,18 +190,6 @@ def eggs_grid(data: dict[str, Any], chicken: str | None = None) -> list[list[int
     return grid
 
 
-@channel("eggs", label="Eggs")
-async def eggs_channel(ctx: Context) -> str | None:
-    """The egg numbers, as ``vestaboard_eggs`` last sent them.
-
-    Tuning to Eggs from the device page or a schedule shows the numbers the
-    event last carried, with a fresh hen; before it has ever been fired, every
-    number is a ``?``.
-    """
-    await ctx.board.send_characters(eggs_grid(ctx.device.data_for("eggs")))
-    return None
-
-
 @on_action("eggs")
 async def eggs(ctx: Context, data: dict[str, Any]) -> None:
     """Fire ``vestaboard_eggs`` in Home Assistant to put the egg count up.
@@ -269,7 +205,6 @@ async def eggs(ctx: Context, data: dict[str, Any]) -> None:
               mtd: 2.75
               ytd: 2.41
 
-    An automation is what knows the numbers; this only lays them out. The
-    numbers are kept, so tuning back to Eggs later shows the last ones sent.
+    An automation is what knows the numbers; this only lays them out.
     """
-    await ctx.device.tune("eggs", data=data)
+    await ctx.board.send_characters(eggs_grid(data))

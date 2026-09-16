@@ -41,11 +41,6 @@ class Library:
         self.directory = directory
         self._last_shown: str | None = None
 
-    @property
-    def last_shown(self) -> str | None:
-        """The name of the piece ``grid`` last encoded, which is what is up."""
-        return self._last_shown
-
     def saved(self) -> dict[str, str]:
         """Every piece on disk, by name. An empty directory is not a problem."""
         pieces = {}

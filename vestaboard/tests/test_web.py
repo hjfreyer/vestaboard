@@ -31,21 +31,10 @@ class FakeBoard:
         return self.grid
 
 
-class FakeDevice:
-    """Counts the times the gallery tells the device the library changed."""
-
-    def __init__(self):
-        self.told = 0
-
-    async def library_changed(self):
-        self.told += 1
-
-
 class FakeContext:
     def __init__(self, tmp_path, board=None):
         self.art = Library(tmp_path)
         self.board = board or FakeBoard()
-        self.device = FakeDevice()
 
 
 async def get_page(ctx, path="/"):
@@ -247,35 +236,6 @@ async def test_a_saved_piece_shows_up_in_the_gallery(tmp_path):
 
     assert ">capture-1<" in body
     assert body.count('<span class="tag">saved</span>') == 1
-
-
-@pytest.mark.asyncio
-async def test_a_capture_tells_the_device_the_library_changed(tmp_path):
-    ctx = FakeContext(tmp_path, FakeBoard(art.to_grid(A_PIECE)))
-
-    await post_capture(ctx)
-
-    # The Piece select's options are the library, so the device has to know.
-    assert ctx.device.told == 1
-
-
-@pytest.mark.asyncio
-async def test_a_delete_tells_the_device_the_library_changed(tmp_path):
-    ctx = FakeContext(tmp_path, FakeBoard(art.to_grid(A_PIECE)))
-    await post_capture(ctx)
-
-    await post_delete(ctx, "capture-1")
-
-    assert ctx.device.told == 2
-
-
-@pytest.mark.asyncio
-async def test_a_failed_capture_has_nothing_to_tell_the_device(tmp_path):
-    ctx = FakeContext(tmp_path, FakeBoard(error=BoardError("no API token configured")))
-
-    await post_capture(ctx)
-
-    assert ctx.device.told == 0
 
 
 @pytest.mark.asyncio
