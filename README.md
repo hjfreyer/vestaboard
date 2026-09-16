@@ -107,7 +107,7 @@ actions:
 An event with no `text`, or nothing but spaces, is logged and leaves the board
 alone; the Cloud API does not take a blank message.
 
-`vestaboard_eggs` is the other action shipped, and shows what a rule can build:
+`vestaboard_eggs` is one of the two actions that show what a rule can build:
 a hen in the seven chips on the left, `TODAY`, `MTD` and `YTD` down the middle,
 and a number against the right edge of each row. `today` is a count of eggs;
 `mtd` and `ytd` are eggs per day so far this month and this year. The hen is
@@ -130,6 +130,37 @@ ten, `12.3` over it, `999+` past the end -- and a number that is missing or is
 not a number at all shows as `?` rather than costing the board the other two.
 `TODAY` is two letters longer than the other labels, so it leaves three chips
 rather than four; a day's eggs need fewer.
+
+`vestaboard_smoker` is the other, and is the one with a row that comes and
+goes: smoke in the three chips on the left, `FOOD` and `AIR` for the probe in
+the meat and the smoker itself, and a `TIMER` counting down underneath -- but
+only when the automation sent a `duration` to count.
+
+```yaml
+actions:
+  - event: vestaboard_smoker
+    event_data:
+      food: 135
+      air: 227
+      duration: "2:06:33"
+```
+
+```
+⬜⬜⬛⬛⬛⬛ F O O D⬛ 1 3 5 F
+⬛⬜⬜⬛⬛⬛⬛ A I R⬛ 2 2 7 F
+⬛⬛🟥⬛⬛ T I M E R⬛ 2 : 0 6
+```
+
+The duration is seconds as a number, or `H:MM:SS` or `H:MM` as a string, which
+is the form a timer entity's `remaining` comes in; seconds are dropped rather
+than rounded, the way a countdown reads. Leave it out -- or template it so it
+renders to nothing while nothing is cooking -- and the TIMER row is not on the
+board at all, though the ember keeps its corner. Temperatures go up as whole
+degrees and an `F`, which is doing the job a degree sign would: code 62 is a
+degree sign on the flagship board and a red heart on this one. A reading that
+is missing or is not a number shows as `?` rather than costing the board the
+others, and a cook past ten hours takes the chip its `12:06` needs from every
+row at once, so the readings stay in a column.
 
 `ctx.board` sends to the board, `ctx.hass` reads state and calls services, and
 `ctx.art` is the art library: `ctx.art.grid("rainbow")` for a named piece,
