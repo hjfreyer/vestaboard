@@ -104,3 +104,19 @@ def test_shipped_rules_all_register():
         "vestaboard_text",
         "vestaboard_eggs",
     ]
+    # In this order: it is the order of the Channel select's options.
+    assert [(ch.name, ch.label) for ch in registry.CHANNELS] == [
+        ("hold", "Hold"),
+        ("art", "Art"),
+        ("message", "Message"),
+        ("eggs", "Eggs"),
+    ]
+
+
+def test_every_shipped_action_has_a_channel_to_tune_to():
+    from vestaboard_ha import rules  # noqa: F401
+
+    # An action is the remote control for a channel, so each names one that
+    # exists: show_art is Art, text is Message, eggs is Eggs.
+    channels = {ch.name for ch in registry.CHANNELS}
+    assert {"art", "message", "eggs"} <= channels

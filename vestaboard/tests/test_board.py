@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import pytest
@@ -182,3 +183,99 @@ async def test_a_grid_bigger_than_the_board_is_an_error():
 
     with pytest.raises(BoardError, match="more than"):
         await board.read()
+
+
+class SlowResponse(FakeResponse):
+    def __init__(self, status, body, gate):
+        super().__init__(status, body)
+        self.gate = gate
+
+    async def text(self):
+        await self.gate.wait()
+        return await super().text()
+
+
+class SlowSession(FakeSession):
+    """A session whose requests hang until told, to be cancelled in the middle of."""
+
+    def __init__(self):
+        super().__init__()
+        self.gate = asyncio.Event()
+
+    def post(self, url, *, json=None, headers=None):
+        self.calls.append({"url": url, "json": json, "headers": headers})
+        return SlowResponse(self.status, self.body, self.gate)
+
+
+@pytest.mark.asyncio
+async def test_a_send_cancelled_while_waiting_its_turn_never_goes_out():
+    session = FakeSession()
+    board = Vestaboard("secret", session, min_interval=15)
+    await board.send_text("ONE")
+
+    two = asyncio.create_task(board.send_text("TWO"))
+    await asyncio.sleep(0.01)
+    two.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await two
+    assert [call["json"] for call in session.calls] == [{"text": "ONE"}]
+
+
+@pytest.mark.asyncio
+async def test_a_send_cancelled_mid_request_still_reaches_the_board():
+    session = SlowSession()
+    board = Vestaboard("secret", session, min_interval=0)
+
+    one = asyncio.create_task(board.send_text("ONE"))
+    await asyncio.sleep(0.01)
+    one.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await one
+
+    # The request was already on its way, and it is not called back.
+    assert [call["json"] for call in session.calls] == [{"text": "ONE"}]
+    session.gate.set()
+    await asyncio.sleep(0.01)
+
+
+@pytest.mark.asyncio
+async def test_a_send_that_was_left_to_finish_still_spends_the_slot(monkeypatch):
+    session = SlowSession()
+    board = Vestaboard("secret", session, min_interval=15)
+
+    one = asyncio.create_task(board.send_text("ONE"))
+    await asyncio.sleep(0.01)
+    one.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await one
+    session.gate.set()
+
+    slept = []
+
+    async def fake_sleep(seconds):
+        slept.append(seconds)
+
+    monkeypatch.setattr("vestaboard_ha.board.asyncio.sleep", fake_sleep)
+    await board.send_text("TWO")
+
+    # TWO waited the interval out behind ONE, whoever was still listening.
+    assert len(slept) == 1
+    assert 14 < slept[0] <= 15
+
+
+@pytest.mark.asyncio
+async def test_a_send_left_to_finish_that_fails_is_logged(caplog):
+    session = SlowSession()
+    session.status, session.body = 500, "the board is unwell"
+    board = Vestaboard("secret", session, min_interval=0)
+
+    one = asyncio.create_task(board.send_text("ONE"))
+    await asyncio.sleep(0.01)
+    one.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await one
+    session.gate.set()
+    await asyncio.sleep(0.01)
+
+    assert "sent without waiting failed: HTTP 500" in caplog.text

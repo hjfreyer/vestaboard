@@ -11,6 +11,12 @@ init: false
 boot: auto
 startup: application
 homeassistant_api: true
+# The device Home Assistant sees is announced over MQTT, and Supervisor only
+# hands the broker's login to an app that has said it uses the service. "want"
+# rather than "need": with no broker the app still starts and the events still
+# work, it just is not a device.
+services:
+  - mqtt:want
 # The art gallery. Home Assistant serves it itself, so the port is never
 # published: the app page grows an "Open Web UI" button, and the sidebar entry
 # is a toggle on that page. ingress_port has to match DEFAULT_WEB_PORT in
