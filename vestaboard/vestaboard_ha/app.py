@@ -1,4 +1,4 @@
-"""Wires rules up to Home Assistant: events in, and the device on the broker."""
+"""Wires rules up to the Home Assistant event stream."""
 
 from __future__ import annotations
 
@@ -9,13 +9,12 @@ from typing import Any
 
 import aiohttp
 
-from . import mqtt, registry, supervisor, web
+from . import registry, web
 from . import settings as settings_module
 from .board import Vestaboard
-from .device import Device, Identity
 from .hass import HassClient
 from .library import Library
-from .settings import Broker, Settings
+from .settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,7 +27,6 @@ class Context:
     hass: HassClient
     art: Library
     settings: Settings
-    device: Device
 
 
 async def _dispatch(ctx: Context, event: dict[str, Any]) -> None:
@@ -54,15 +52,6 @@ def _event_types() -> list[str]:
     return types
 
 
-async def _broker(session: aiohttp.ClientSession, settings: Settings) -> Broker | None:
-    """The broker to put the device on: named outright, or asked of Supervisor."""
-    if settings.mqtt is not None:
-        return settings.mqtt
-    if settings.supervisor_token:
-        return await supervisor.mqtt_broker(session, settings.supervisor_token)
-    return None
-
-
 async def run() -> None:
     settings = settings_module.load()
     logging.basicConfig(
@@ -74,24 +63,16 @@ async def run() -> None:
     from . import rules  # noqa: F401
 
     _LOGGER.info(
-        "starting with %d channels and %d action rules%s",
-        len(registry.CHANNELS),
+        "starting with %d action rules%s",
         len(registry.ACTION_RULES),
         " (DRY RUN)" if settings.dry_run else "",
     )
-    for channel in registry.CHANNELS:
-        _LOGGER.info("channel %s: the %s option", channel.name, channel.label)
     for rule in registry.ACTION_RULES:
         _LOGGER.info("action %s: fire the %s event", rule.name, rule.event_type)
 
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=30)
     ) as session:
-        identity = Identity()
-        if settings.supervisor_token:
-            identity = await supervisor.identity(session, settings.supervisor_token)
-
-        device = Device(settings.state_path, identity)
         ctx = Context(
             board=Vestaboard(
                 settings.api_token, session, dry_run=settings.dry_run
@@ -101,39 +82,20 @@ async def run() -> None:
             ),
             art=Library(settings.art_dir),
             settings=settings,
-            device=device,
         )
 
         gallery = await web.serve(ctx, settings.web_port)
 
         try:
-            await device.start(ctx)
-
-            tasks = []
-            broker = await _broker(session, settings)
-            if broker is not None:
-                tasks.append(mqtt.run(broker, device))
-            else:
-                _LOGGER.warning(
-                    "no MQTT broker, so Home Assistant will not see the device; "
-                    "the events still work"
-                )
-            if settings.has_hass:
-                tasks.append(
-                    ctx.hass.listen_forever(
-                        lambda event: _dispatch(ctx, event), *_event_types()
-                    )
-                )
-            else:
-                _LOGGER.warning("no Home Assistant token, so no events will arrive")
-
-            if tasks:
-                await asyncio.gather(*tasks)
-            else:
-                # Nothing can reach the board without either, but the gallery
-                # is worth staying up for.
+            if not settings.has_hass:
+                # Nothing can reach the board without Home Assistant to ask,
+                # but the gallery is worth staying up for.
+                _LOGGER.warning("no Home Assistant token, serving the gallery only")
                 await asyncio.Event().wait()
+            else:
+                await ctx.hass.listen_forever(
+                    lambda event: _dispatch(ctx, event), *_event_types()
+                )
         finally:
-            device.stop()
             if gallery is not None:
                 await gallery.cleanup()

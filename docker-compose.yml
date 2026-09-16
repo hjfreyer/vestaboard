@@ -22,9 +22,3 @@ services:
       HASS_TOKEN: ${HASS_TOKEN}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       TZ: ${TZ:-America/Los_Angeles}
-      # The broker to put the device on. Under the app store Supervisor says
-      # which; here it has to be named. Leave MQTT_HOST unset for no device.
-      MQTT_HOST: ${MQTT_HOST:-}
-      MQTT_PORT: ${MQTT_PORT:-1883}
-      MQTT_USERNAME: ${MQTT_USERNAME:-}
-      MQTT_PASSWORD: ${MQTT_PASSWORD:-}

@@ -102,42 +102,26 @@ class Vestaboard:
 
     async def _post(self, payload: dict) -> None:
         async with self._lock:
-            # Waiting is the one part of this a caller may give up on: the
-            # device does, when a newer message makes the one waiting moot.
             await self._wait_for_slot()
-
-            # From here the message is going, so the slot is spent -- before
-            # the request rather than after, so that a caller cancelled in the
-            # middle of it cannot let the next message out inside the interval.
-            self._last_sent = time.monotonic()
 
             if self._dry_run:
                 _LOGGER.info("DRY RUN, would send: %s", payload)
+                self._last_sent = time.monotonic()
                 return
 
             if not self._token:
                 raise BoardError("no API token configured")
 
-            # And what is going, goes. Cancelled mid-request we could not say
-            # whether the board got it; so the request finishes on its own,
-            # and the caller simply hears no more of it.
-            sending = asyncio.ensure_future(self._send(payload))
-            try:
-                await asyncio.shield(sending)
-            except asyncio.CancelledError:
-                sending.add_done_callback(_note_if_it_failed)
-                raise
-
-    async def _send(self, payload: dict) -> None:
-        async with self._session.post(
-            CLOUD_ENDPOINT,
-            json=payload,
-            headers={"X-Vestaboard-Token": self._token},
-        ) as response:
-            body = await response.text()
-            if response.status >= 400:
-                raise BoardError(f"HTTP {response.status} from Vestaboard: {body}")
-            _LOGGER.debug("sent to board: %s", body)
+            async with self._session.post(
+                CLOUD_ENDPOINT,
+                json=payload,
+                headers={"X-Vestaboard-Token": self._token},
+            ) as response:
+                body = await response.text()
+                self._last_sent = time.monotonic()
+                if response.status >= 400:
+                    raise BoardError(f"HTTP {response.status} from Vestaboard: {body}")
+                _LOGGER.debug("sent to board: %s", body)
 
     async def _wait_for_slot(self) -> None:
         if self._last_sent is None:
@@ -147,12 +131,3 @@ class Vestaboard:
             delay = self._min_interval - elapsed
             _LOGGER.debug("rate limiting, sleeping %.1fs", delay)
             await asyncio.sleep(delay)
-
-
-def _note_if_it_failed(sending: asyncio.Future) -> None:
-    """A request that outlived its caller: nobody else will hear it fail."""
-    if sending.cancelled():
-        return
-    exc = sending.exception()
-    if exc is not None:
-        _LOGGER.error("a message sent without waiting failed: %s", exc)
