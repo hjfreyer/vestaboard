@@ -36,11 +36,12 @@ file away. Pieces that come from `art.py` have no button: they are code.
 The app listens for events, so an automation can put something on the board.
 Use the **Fire event** action (under *Other actions* in the automation editor):
 
-| Event                  | What it does                                          |
-| ---------------------- | ----------------------------------------------------- |
-| `vestaboard_show_art`  | Shows a piece of pixel art. Optional `name` picks one. |
-| `vestaboard_text`      | Shows the `text` it is given, laid out by the board.   |
-| `vestaboard_eggs`      | Shows the egg numbers: `today`, `mtd` and `ytd`.      |
+| Event                 | What it does                                                 |
+| --------------------- | ------------------------------------------------------------ |
+| `vestaboard_show_art` | Shows a piece of pixel art. Optional `name` picks one.       |
+| `vestaboard_text`     | Shows the `text` it is given, laid out by the board.         |
+| `vestaboard_eggs`     | Shows the egg numbers: `today`, `mtd` and `ytd`.             |
+| `vestaboard_smoker`   | Shows a cook: `food`, `air`, and a `duration` to count down. |
 
 A half-hourly rotation, then, is an automation and not a code change:
 
@@ -116,6 +117,43 @@ its label has left it, so a daily average reads `2.75` under ten and `12.3`
 over it, and drops the decimal point entirely past a hundred. A number too big
 for its chips shows as `999+`, and one that is missing or is not a number shows
 as `?` -- the other two still go up.
+
+## A cook
+
+`vestaboard_smoker` puts smoke on the left of the board and a cook's numbers
+down the right: `food`, the probe in the meat, and `air`, the smoker itself.
+Send a `duration` as well and a third row counts it down; leave it out and the
+board is the two temperatures.
+
+```yaml
+alias: Smoker to the board
+triggers:
+  - trigger: time_pattern
+    minutes: "/5"
+actions:
+  - event: vestaboard_smoker
+    event_data:
+      food: "{{ states('sensor.meat_probe') | float }}"
+      air: "{{ states('sensor.smoker_temperature') | float }}"
+      duration: >-
+        {{ state_attr('timer.smoker', 'remaining')
+           if is_state('timer.smoker', 'active') }}
+```
+
+The duration is seconds as a number -- which is what subtracting one timestamp
+from another gives -- or `H:MM:SS` or `H:MM` as a string, the form a timer
+entity's `remaining` attribute comes in. Seconds are dropped rather than
+rounded, so `2:06` means two hours and six minutes still to go, and a cook that
+has run over sits at `0:00`.
+
+A duration that is missing, or that a template rendered to nothing, counts as no
+duration at all -- which is what the `if` in that last template is for: the
+TIMER row is on the board while the timer is running and gone when it is not. Temperatures go up as whole degrees with an `F`
+after them -- the board has a degree sign on the flagship, but this one is a
+Note, which draws that flap as a red heart -- and a reading that is missing or
+is not a number shows as `?` while the other rows still go up. A cook past ten
+hours needs a chip more for its timer, and every row steps left together to
+give it one, so the readings stay in a column.
 
 ## Changing what gets sent
 

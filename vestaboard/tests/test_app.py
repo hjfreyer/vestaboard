@@ -103,4 +103,5 @@ def test_shipped_rules_all_register():
         "vestaboard_show_art",
         "vestaboard_text",
         "vestaboard_eggs",
+        "vestaboard_smoker",
     ]

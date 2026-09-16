@@ -249,3 +249,191 @@ async def test_a_count_too_big_for_four_chips_says_so(tmp_path):
     await rules.eggs(ctx, {"today": 1, "mtd": 1.2, "ytd": 10000})
 
     assert right_of_the_hen(ctx.board.grids[0])[2] == "YTD 999+"
+
+
+def right_of_the_smoke(grid):
+    """Each row's label and reading, as the text the board will show."""
+    return [
+        "".join(charcodes.CODE_TO_CHAR[code] for code in row[rules.SMOKE_COLS :])
+        for row in grid
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_smoker_board_is_two_temperatures_and_a_timer(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    await rules.smoker(ctx, {"food": 135, "air": 227, "duration": "2:06:33"})
+
+    [grid] = ctx.board.grids
+    assert right_of_the_smoke(grid) == [
+        "   FOOD 135F",
+        "    AIR 227F",
+        "  TIMER 2:06",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_no_duration_means_no_timer_row(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    await rules.smoker(ctx, {"food": 135, "air": 227})
+
+    [grid] = ctx.board.grids
+    assert right_of_the_smoke(grid) == [
+        "   FOOD 135F",
+        "    AIR 227F",
+        "            ",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_duration_that_renders_to_nothing_is_no_duration(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    # What a template comes out as while the smoker is off.
+    for duration in (None, "", "   "):
+        await rules.smoker(ctx, {"food": 135, "air": 227, "duration": duration})
+
+    assert all(
+        right_of_the_smoke(grid)[2].strip() == "" for grid in ctx.board.grids
+    )
+
+
+def test_the_smoke_is_written_out_to_the_chips_it_fills():
+    chips = art.rows(rules.SMOKE)  # raises if the smoke does not parse
+
+    assert len(chips) == charcodes.ROWS
+    assert [len(row) for row in chips] == [rules.SMOKE_COLS] * charcodes.ROWS
+
+
+def test_the_smoke_fills_the_chips_left_of_the_readings():
+    grid = rules.smoker_grid({"food": 135, "air": 227, "duration": 60})
+
+    assert len(grid) == charcodes.ROWS
+    assert all(len(row) == charcodes.COLS for row in grid)
+    assert [row[: rules.SMOKE_COLS] for row in grid] == chips_of(rules.SMOKE)
+
+
+def test_the_ember_stays_lit_with_nothing_to_count():
+    # The timer's row is the one the smoke's last chip is in, so leaving the
+    # row off must not take the ember with it.
+    grid = rules.smoker_grid({"food": 135, "air": 227})
+
+    assert grid[2][: rules.SMOKE_COLS] == chips_of(rules.SMOKE)[2]
+
+
+@pytest.mark.asyncio
+async def test_a_duration_can_arrive_however_the_automation_has_it(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    # Seconds, which is what Home Assistant's own durations are; a timer
+    # entity's remaining; the same thing written without its seconds; and a
+    # template, which renders to a string.
+    for duration in (7593, "2:06:33", "2:06", "7593"):
+        await rules.smoker(ctx, {"food": 135, "air": 227, "duration": duration})
+
+    assert [right_of_the_smoke(grid)[2] for grid in ctx.board.grids] == [
+        "  TIMER 2:06"
+    ] * 4
+
+
+@pytest.mark.asyncio
+async def test_a_countdown_keeps_the_minutes_it_has_not_finished(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    # Seconds are dropped rather than rounded: 6:59 to go is still six minutes.
+    await rules.smoker(ctx, {"food": 135, "air": 227, "duration": "0:06:59"})
+
+    assert right_of_the_smoke(ctx.board.grids[0])[2] == "  TIMER 0:06"
+
+
+@pytest.mark.asyncio
+async def test_a_cook_that_has_run_over_sits_at_zero(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    await rules.smoker(ctx, {"food": 135, "air": 227, "duration": -30})
+
+    assert right_of_the_smoke(ctx.board.grids[0])[2] == "  TIMER 0:00"
+
+
+@pytest.mark.asyncio
+async def test_a_long_cook_takes_the_chip_it_needs_from_every_row(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    await rules.smoker(ctx, {"food": 135, "air": 227, "duration": "12:06:00"})
+
+    # The whole board steps left together, so the readings stay in a column.
+    assert right_of_the_smoke(ctx.board.grids[0]) == [
+        "  FOOD  135F",
+        "   AIR  227F",
+        " TIMER 12:06",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_temperatures_are_whole_degrees_however_they_arrive(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    # A Home Assistant template renders to a string, and a probe reads in
+    # tenths; neither is worth a chip on a board this size.
+    await rules.smoker(ctx, {"food": "135.4", "air": 226.6})
+
+    assert right_of_the_smoke(ctx.board.grids[0])[:2] == [
+        "   FOOD 135F",
+        "    AIR 227F",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_reading_that_is_not_a_number_is_a_question_mark(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    # An unplugged probe, and a duration that is not a length of time.
+    await rules.smoker(ctx, {"food": 135, "air": "unavailable", "duration": "soon"})
+
+    assert right_of_the_smoke(ctx.board.grids[0]) == [
+        "   FOOD 135F",
+        "    AIR    ?",
+        "  TIMER    ?",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_reading_too_wide_for_its_chips_is_a_question_mark(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    # Nothing about a cook is that hot or that long; the sensor is broken.
+    await rules.smoker(ctx, {"food": 1e9, "air": 227, "duration": "10000:00"})
+
+    assert right_of_the_smoke(ctx.board.grids[0]) == [
+        "   FOOD    ?",
+        "    AIR 227F",
+        "  TIMER    ?",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_readings_line_up_against_the_right_edge(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    # Three labels of three different lengths, and the readings still end on
+    # the board's last chip.
+    await rules.smoker(ctx, {"food": 95, "air": 227, "duration": "1:30:00"})
+
+    [grid] = ctx.board.grids
+    assert [row[-1] for row in grid] == [charcodes.encode_char(c) for c in "FF0"]
+
+
+def test_a_smoke_that_is_not_the_size_of_its_chips_is_an_error(monkeypatch):
+    monkeypatch.setattr(rules, "SMOKE", "⬜⬜⬜⬜\n⬜⬜⬜⬜\n⬜⬜⬜⬜")
+
+    with pytest.raises(ValueError, match="the smoke is 3 rows of 3 chips"):
+        rules.smoker_grid({"food": 135, "air": 227})
+
+
+def test_a_label_leaving_no_room_for_the_smoke_is_an_error(monkeypatch):
+    monkeypatch.setattr(rules, "SMOKER_ROWS", (("TEMPERATURE", "food"),))
+
+    with pytest.raises(ValueError, match="no room for the smoke"):
+        rules.smoker_grid({"food": 135})
