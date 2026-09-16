@@ -21,24 +21,35 @@ _LOGGER = logging.getLogger(__name__)
 SUPERVISOR = "http://supervisor"
 
 
+#: What Supervisor says, for a service, when no app is providing it.
+NOT_ENABLED = "Service not enabled"
+
+
+class Refused(Exception):
+    """Supervisor answered, and the answer was no. Carries its message."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(f"HTTP {status}: {message}")
+        self.status = status
+        self.message = message
+
+
 async def _get(session: aiohttp.ClientSession, token: str, path: str) -> dict[str, Any]:
-    """The ``data`` of a Supervisor response, or ``{}`` for anything else."""
-    try:
-        async with session.get(
-            f"{SUPERVISOR}{path}", headers={"Authorization": f"Bearer {token}"}
-        ) as response:
+    """The ``data`` of a Supervisor response.
+
+    A refusal raises ``Refused`` with what Supervisor said; not being able to
+    ask at all raises ``aiohttp.ClientError``.
+    """
+    async with session.get(
+        f"{SUPERVISOR}{path}", headers={"Authorization": f"Bearer {token}"}
+    ) as response:
+        try:
             body = await response.json(content_type=None)
-            if response.status >= 400:
-                _LOGGER.warning(
-                    "Supervisor answered HTTP %d for %s: %s",
-                    response.status,
-                    path,
-                    body.get("message", body) if isinstance(body, dict) else body,
-                )
-                return {}
-    except (aiohttp.ClientError, ValueError) as exc:
-        _LOGGER.warning("could not ask Supervisor for %s: %s", path, exc)
-        return {}
+        except ValueError as exc:
+            raise Refused(response.status, f"not JSON: {exc}") from exc
+        if response.status >= 400:
+            message = body.get("message", body) if isinstance(body, dict) else body
+            raise Refused(response.status, str(message))
 
     data = body.get("data") if isinstance(body, dict) else None
     return data if isinstance(data, dict) else {}
@@ -49,12 +60,41 @@ async def mqtt_broker(session: aiohttp.ClientSession, token: str) -> Broker | No
 
     Supervisor hands out the host and a login of its own for it, so an app
     that lists ``mqtt`` under ``services`` never needs the broker configured.
+    With no app providing the service, Supervisor refuses the question
+    rather than answering it, and that refusal is the "no broker".
     """
-    data = await _get(session, token, "/services/mqtt")
-    if not data.get("available") or not data.get("host"):
-        _LOGGER.info("no MQTT broker: the Mosquitto app is not running")
+    try:
+        data = await _get(session, token, "/services/mqtt")
+    except Refused as exc:
+        if exc.message == NOT_ENABLED:
+            _LOGGER.info(
+                "no MQTT broker: no app provides one (the Mosquitto broker app "
+                "is not installed, or not running)"
+            )
+        else:
+            _LOGGER.warning("Supervisor would not say where the MQTT broker is: %s", exc)
+        return None
+    except aiohttp.ClientError as exc:
+        _LOGGER.warning("could not ask Supervisor for the MQTT broker: %s", exc)
         return None
 
+    # The answer is the broker itself: host, port, a login, and which app it
+    # is. There is no "available" in it; not being available is the refusal
+    # above. Anything without a host is an answer we do not understand.
+    if not data.get("host"):
+        _LOGGER.warning(
+            "Supervisor's answer for the MQTT broker has no host in it: %s",
+            {key: value for key, value in data.items() if key != "password"},
+        )
+        return None
+
+    provider = data.get("app") or data.get("addon")
+    _LOGGER.info(
+        "MQTT broker at %s:%s, provided by %s",
+        data["host"],
+        data.get("port") or Broker.port,
+        provider or "an app Supervisor did not name",
+    )
     return Broker(
         host=str(data["host"]),
         port=int(data.get("port") or Broker.port),
@@ -66,7 +106,11 @@ async def mqtt_broker(session: aiohttp.ClientSession, token: str) -> Broker | No
 
 async def identity(session: aiohttp.ClientSession, token: str) -> Identity:
     """The app's own version and, if it has ingress, the page it serves."""
-    data = await _get(session, token, "/addons/self/info")
+    try:
+        data = await _get(session, token, "/addons/self/info")
+    except (Refused, aiohttp.ClientError) as exc:
+        _LOGGER.warning("Supervisor would not say what this app is: %s", exc)
+        return Identity()
     slug = data.get("slug")
     url = None
     if slug and data.get("ingress"):
