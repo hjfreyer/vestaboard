@@ -77,14 +77,14 @@ def test_every_piece_gets_a_card_and_all_of_its_chips():
     html = web.page(art.ARTWORKS)
 
     for name in art.ARTWORKS:
-        assert f">{name}</h2>" in html
+        assert f">{name}</h3>" in html
     assert html.count("<article") == len(art.ARTWORKS)
     # The piece itself, 15x3, and not the blank surround the board centers it in.
     assert html.count('class="chip') == CHIPS_PER_PIECE * len(art.ARTWORKS)
 
 
 def test_a_heart_is_drawn_as_one_and_not_as_a_degree_sign():
-    html = web.page({"love": "\n❤️🟥❤️\n"})
+    html = web.page({"love": art.Piece("\n❤️🟥❤️\n")})
 
     # Code 62 is the degree sign in the character table, but this board is a
     # Note, which draws it as a red heart -- so the gallery has to as well.
@@ -94,7 +94,7 @@ def test_a_heart_is_drawn_as_one_and_not_as_a_degree_sign():
 
 
 def test_a_short_line_is_padded_out_with_unlit_flaps():
-    html = web.page({"corner": "\n🟥🟥🟥\n🟥\n\n"})
+    html = web.page({"corner": art.Piece("\n🟥🟥🟥\n🟥\n\n")})
 
     # Three rows of the widest line's three chips, all but two of them unlit.
     assert html.count('class="chip') == 9
@@ -107,7 +107,7 @@ def test_cards_keep_the_order_art_py_has_them_in():
 
 
 def test_colors_and_characters_both_show_up():
-    html = web.page({"party": A_PIECE})
+    html = web.page({"party": art.Piece(A_PIECE)})
 
     assert '<span class="chip red"></span>' in html
     assert '<span class="chip violet"></span>' in html
@@ -117,7 +117,9 @@ def test_colors_and_characters_both_show_up():
 
 def test_a_piece_that_no_longer_encodes_says_so():
     taller_than_the_board = "\n" + "🟥\n" * 7
-    html = web.page({"good": A_PIECE, "broken": taller_than_the_board})
+    html = web.page(
+        {"good": art.Piece(A_PIECE), "broken": art.Piece(taller_than_the_board)}
+    )
 
     assert "does not encode" in html
     assert "7 rows" in html
@@ -126,7 +128,7 @@ def test_a_piece_that_no_longer_encodes_says_so():
 
 
 def test_names_and_characters_are_escaped():
-    html = web.page({"<script>": "\n Q &\n\n\n"})
+    html = web.page({"<script>": art.Piece("\n Q &\n\n\n")})
 
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
@@ -207,11 +209,14 @@ async def test_a_port_we_cannot_have_is_logged_not_raised(tmp_path, caplog):
         await first.cleanup()
 
 
-def test_the_header_offers_to_capture_the_board():
+def test_the_header_offers_to_capture_the_board_into_a_category():
     html = web.page(art.ARTWORKS)
 
-    assert '<form method="post">' in html
+    assert '<form method="post" class="capture">' in html
     assert "Capture the board" in html
+    # Every category we know, with the default one already picked.
+    assert '<option value="art" selected>art</option>' in html
+    assert '<option value="bedtime">bedtime</option>' in html
 
 
 def test_saved_pieces_are_marked_as_saved():
@@ -230,7 +235,7 @@ def test_a_notice_is_shown_and_escaped():
 @pytest.mark.asyncio
 async def test_a_saved_piece_shows_up_in_the_gallery(tmp_path):
     ctx = FakeContext(tmp_path)
-    ctx.art.capture(art.to_grid(art.ARTWORKS["rainbow"]))
+    ctx.art.capture(art.to_grid(art.ARTWORKS["rainbow"].art))
 
     _, body = await get_page(ctx)
 
@@ -245,7 +250,7 @@ async def test_capture_saves_the_board_and_says_where(tmp_path):
 
     response, _ = await post_capture(ctx)
 
-    assert ctx.art.saved() == {"capture-1": art.render(grid)}
+    assert ctx.art.saved() == {"capture-1": art.Piece(art.render(grid))}
     # Posting again would capture again, so the answer is a redirect.
     assert response.status == 200
     assert response.history[0].status == 303
@@ -321,7 +326,7 @@ def test_the_redirect_goes_back_through_ingress():
 
 
 def test_only_saved_pieces_can_be_deleted():
-    saved = web.page({"capture-1": A_PIECE}, saved={"capture-1"})
+    saved = web.page({"capture-1": art.Piece(A_PIECE)}, saved={"capture-1"})
     built_in = web.page({"rainbow": art.ARTWORKS["rainbow"]})
 
     assert '<button name="delete" value="capture-1"' in saved
@@ -329,13 +334,13 @@ def test_only_saved_pieces_can_be_deleted():
 
 
 def test_the_delete_button_asks_first():
-    html = web.page({"capture-1": A_PIECE}, saved={"capture-1"})
+    html = web.page({"capture-1": art.Piece(A_PIECE)}, saved={"capture-1"})
 
     assert 'onsubmit="return confirm(&quot;Delete capture-1?&quot;)"' in html
 
 
 def test_a_name_with_a_quote_in_it_does_not_break_the_asking():
-    html = web.page({"it's": A_PIECE}, saved={"it's"})
+    html = web.page({"it's": art.Piece(A_PIECE)}, saved={"it's"})
 
     # The apostrophe reaches the confirm as text, not as the end of a string.
     assert "confirm(&quot;Delete it&#x27;s?&quot;)" in html
@@ -383,3 +388,67 @@ async def test_a_piece_still_here_is_not_announced_as_deleted(tmp_path):
     _, body = await get_page(ctx, "/?deleted=capture-1")
 
     assert "Deleted" not in body
+
+
+def test_the_cards_are_grouped_under_the_category_to_ask_for():
+    html = web.page(
+        {
+            "rainbow": art.Piece(A_PIECE),
+            "moonrise": art.Piece(A_PIECE, category="bedtime"),
+        }
+    )
+
+    assert '<h2 class="category">art</h2>' in html
+    assert '<h2 class="category">bedtime</h2>' in html
+    assert html.index("rainbow") < html.index("moonrise")
+    # A card belongs to the group above it and nowhere else.
+    assert html.count("<article") == 2
+    assert html.count("<section") == 2
+
+
+def test_a_category_with_nothing_in_it_gets_no_heading():
+    html = web.page({"rainbow": art.Piece(A_PIECE)})
+
+    assert '<h2 class="category">art</h2>' in html
+    assert "bedtime</h2>" not in html
+    # It is still somewhere to capture into, which is how it gets filled.
+    assert '<option value="bedtime">bedtime</option>' in html
+
+
+def test_a_category_a_saved_piece_made_up_is_shown_and_offered():
+    html = web.page({"cook": art.Piece(A_PIECE, category="smoker")})
+
+    assert '<h2 class="category">smoker</h2>' in html
+    assert '<option value="smoker">smoker</option>' in html
+
+
+def test_the_category_is_escaped():
+    html = web.page({"x": art.Piece(A_PIECE, category="<script>")})
+
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+@pytest.mark.asyncio
+async def test_a_capture_goes_into_the_category_the_form_asked_for(tmp_path):
+    grid = art.to_grid(A_PIECE)
+    ctx = FakeContext(tmp_path, FakeBoard(grid))
+
+    response, _ = await post(ctx, {"capture": "board", "category": "bedtime"})
+    _, body = await get_page(ctx, "/?saved=capture-1")
+
+    assert ctx.art.saved() == {"capture-1": art.Piece(art.render(grid), "bedtime")}
+    assert response.history[0].headers["Location"] == "/?saved=capture-1"
+    assert "Captured as capture-1 in bedtime" in body
+
+
+@pytest.mark.asyncio
+async def test_a_category_that_is_not_one_says_why(tmp_path):
+    ctx = FakeContext(tmp_path, FakeBoard(art.to_grid(A_PIECE)))
+
+    response, body = await post(ctx, {"capture": "board", "category": "../escape"})
+
+    assert response.status == 200
+    assert response.history == ()
+    assert "Could not capture the board" in body
+    assert ctx.art.saved() == {}

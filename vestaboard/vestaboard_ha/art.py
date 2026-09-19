@@ -19,12 +19,18 @@ board's own 15x3, and ``to_grid`` centers it there. A full-size piece -- which
 the ones here are, and which a piece captured off the board always is -- lands
 on the board exactly as written; a smaller one is centered.
 
+Every piece also belongs to a category, which is what a random pick is made
+within: ``art`` unless the piece says otherwise, so the quiet ``bedtime`` pieces
+stay out of the daytime rotation and the daytime ones stay out of bedtime.
+
 ``render`` goes the other way, turning a grid back into text to save.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
+from typing import NamedTuple
 
 from . import charcodes
 
@@ -49,13 +55,41 @@ PALETTE: dict[str, int] = {
     "❤": charcodes.HEART,
 }
 
-ARTWORKS: dict[str, str] = {
-    "rainbow": """
+#: The category a piece is in when nothing says otherwise, and the one a rule
+#: picks within when an automation does not ask for another.
+DEFAULT_CATEGORY = "art"
+
+#: The categories the app itself knows. A saved piece can be in one of its own
+#: -- a directory is a category -- so this is the list we offer rather than the
+#: list there is; ``categories`` is the latter.
+CATEGORIES: tuple[str, ...] = (DEFAULT_CATEGORY, "bedtime")
+
+
+class Piece(NamedTuple):
+    """One artwork: the chips themselves, and the category it is in."""
+
+    art: str
+    category: str = DEFAULT_CATEGORY
+
+
+ARTWORKS: dict[str, Piece] = {
+    "rainbow": Piece("""
 🟥🟥🟥🟧🟧🟧🟨🟨🟨🟩🟩🟩🟦🟦🟦
 🟧🟧🟧🟨🟨🟨🟩🟩🟩🟦🟦🟦🟪🟪🟪
 🟨🟨🟨🟩🟩🟩🟦🟦🟦🟪🟪🟪🟥🟥🟥
-""",
+"""),
+    "moon": Piece("""
+⬛⬜⬛⬛⬛⬛⬛⬛⬜⬛⬛⬛🟨🟨⬛
+⬛⬛⬛⬛⬜⬛⬛⬛⬛⬛⬛🟨🟨🟨⬛
+⬛⬛⬜⬛⬛⬛⬛⬜⬛⬛⬛⬛🟨🟨⬛
+""", category="bedtime"),
 }
+
+
+def categories(pieces: Mapping[str, Piece]) -> list[str]:
+    """Every category to offer: the ones we know, then any others in play."""
+    extra = {piece.category for piece in pieces.values()} - set(CATEGORIES)
+    return [*CATEGORIES, *sorted(extra)]
 
 
 def encode_chip(chip: str) -> int:

@@ -33,12 +33,17 @@ _LOGGER = logging.getLogger(__name__)
 async def show_art(ctx: Context, data: dict[str, Any]) -> None:
     """Fire ``vestaboard_show_art`` in Home Assistant to put art on the board.
 
-    With no ``event_data``, a random piece; with ``name: rainbow``, that one. The
-    pieces are the ones in ``art.py`` and the ones captured into the gallery.
-    An automation on a half-hourly time pattern is what makes it a rotation --
-    see the README.
+    With no ``event_data``, a random piece from the ``art`` category; with
+    ``category: bedtime``, a random one from that category instead; with
+    ``name: rainbow``, that piece whichever category it is in. The pieces are
+    the ones in ``art.py`` and the ones captured into the gallery. An automation
+    on a half-hourly time pattern is what makes it a rotation -- and a second
+    one, firing at bedtime with the category, is what makes the board quiet down
+    at night. See the README.
     """
-    await ctx.board.send_characters(ctx.art.grid(data.get("name")))
+    await ctx.board.send_characters(
+        ctx.art.grid(data.get("name"), data.get("category"))
+    )
 
 
 @on_action("text")

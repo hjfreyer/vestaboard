@@ -45,7 +45,7 @@ vestaboard/                the app; also the Docker build context
   Dockerfile               how Supervisor builds it
   vestaboard_ha/
     rules.py               >>> the file worth editing <<<
-    art.py                 the pixel art, and the encoding of it
+    art.py                 the pixel art, its categories, and the encoding
     library.py             the art on disk, capturing it, and picking one
     web.py                 the art gallery, served over ingress
     app.py                 wires rules to the Home Assistant event stream
@@ -164,7 +164,8 @@ row at once, so the readings stay in a column.
 
 `ctx.board` sends to the board, `ctx.hass` reads state and calls services, and
 `ctx.art` is the art library: `ctx.art.grid("rainbow")` for a named piece,
-`ctx.art.grid()` for a random one.
+`ctx.art.grid()` for a random one from the `art` category, and
+`ctx.art.grid(category="bedtime")` for a random one from another.
 
 ## Pixel art
 
@@ -173,11 +174,11 @@ piece is. `art.py` holds the artwork, written inline so the source shows it:
 
 ```python
 ARTWORKS = {
-    "rainbow": """
+    "rainbow": Piece("""
 🟥🟥🟥🟧🟧🟧🟨🟨🟨🟩🟩🟩🟦🟦🟦
 🟧🟧🟧🟨🟨🟨🟩🟩🟩🟦🟦🟦🟪🟪🟪
 🟨🟨🟨🟩🟩🟩🟦🟦🟦🟪🟪🟪🟥🟥🟥
-""",
+"""),
 }
 ```
 
@@ -195,18 +196,38 @@ a bare `PARTY` is an error, and two spaces are a blank chip. That is what lets
 a piece mix the two:
 
 ```python
-    "party": """
+    "party": Piece("""
 🟥🟧🟨🟩🟦🟪🟥🟧🟨🟩🟦🟪🟥🟧🟨
 ⬛⬛⬛⬛ P A R T Y !⬛⬛⬛⬛⬛
 🟪🟦🟩🟨🟧🟥🟪🟦🟩🟨🟧🟥🟪🟦🟩
-""",
+"""),
 ```
 
-`art.py` ships with `rainbow` and nothing else; everything past that is yours
-to write, or to capture.
+`art.py` ships with `rainbow` and `moon` and nothing else; everything past that
+is yours to write, or to capture.
 
 Lines are written flush left and may stop early; the right side is padded with
 blanks, and a piece smaller than the board is centered on it.
+
+### Categories
+
+A piece belongs to a category, and a random pick is made within one, so the
+board has as many rotations as you give it categories. `art` is the category a
+piece is in when it does not say otherwise, and `bedtime` is the other one
+shipped -- the quiet pieces, which the daytime rotation should not reach for:
+
+```python
+    "moon": Piece("""
+⬛⬜⬛⬛⬛⬛⬛⬛⬜⬛⬛⬛🟨🟨⬛
+⬛⬛⬛⬛⬜⬛⬛⬛⬛⬛⬛🟨🟨🟨⬛
+⬛⬛⬜⬛⬛⬛⬛⬜⬛⬛⬛⬛🟨🟨⬛
+""", category="bedtime"),
+```
+
+Nothing stops a piece naming a category of its own -- `smoker`, say, for the
+boards a cook wants -- and the gallery and the event take it from there. The
+categories in `CATEGORIES` are the ones the gallery offers to capture into;
+the rest are made by putting a piece in one.
 
 ### Saved art
 
@@ -219,11 +240,20 @@ renamed. Only saved pieces have the button; anything in `art.py` is deleted by
 editing `art.py`. A file wins over a piece of the same name in `art.py`, because a file
 is something you put there on purpose.
 
+A directory is a category: `/data/art/bedtime/moonrise.txt` is `moonrise` in
+the `bedtime` category, and a file in `/data/art` itself is in `art`. Moving a
+file between them is how a saved piece changes category, the same way renaming
+it is how a piece is renamed. A name is a name wherever its file sits, so two
+files of the same name in different categories are one piece and the one at the
+top level wins.
+
 The gallery's **Capture the board** button is the quick way to make one: it
 reads what the board is showing right now and writes it to the next free
-`capture-N.txt`, text and all. Capturing the same thing twice does not make a
-second file. A saved piece is in the rotation from that moment, without a
-restart.
+`capture-N.txt`, text and all, in whichever category the **Into** menu beside
+it says. Capturing the same thing into the same category twice does not make a
+second file -- into another category it does, since those are two pieces shown
+at different times of day. A saved piece is in the rotation from that moment,
+without a restart.
 
 A file that no longer parses -- an easy thing to do by hand -- says so on its
 card in the gallery and sits out the rotation, rather than breaking either.
@@ -234,7 +264,9 @@ Every piece, chip for chip, is on the app's own page: **Open Web UI** on the app
 in Home Assistant, or the sidebar entry if you turn one on from that page. It is
 a scrollable list, one card per piece, labeled with the name to pass as
 `event_data` and marked `saved` when the piece is a file rather than something
-in `art.py`. There is a **Capture the board** button in the header.
+in `art.py`. The cards are grouped under the category to pass as `category`, so
+the page reads as the rotations it is. There is a **Capture the board** button
+in the header, and a menu beside it for which category the capture lands in.
 
 The page is built on each request, so a saved piece appears the moment it is
 written and a piece added to `art.py` appears as soon as the app restarts.
@@ -255,8 +287,22 @@ actions:
   - event: vestaboard_show_art
 ```
 
-That is a random piece every half hour, never the same one twice in a row. To
-ask for a particular one, name it:
+That is a random `art` piece every half hour, never the same one twice in a
+row. A second automation, firing once at bedtime, is the other rotation:
+
+```yaml
+alias: Vestaboard bedtime
+triggers:
+  - trigger: time
+    at: "20:30:00"
+actions:
+  - event: vestaboard_show_art
+    event_data:
+      category: bedtime
+```
+
+To ask for a particular piece, name it -- a name is a name whichever category
+the piece is in:
 
 ```yaml
 actions:

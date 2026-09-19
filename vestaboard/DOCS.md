@@ -23,10 +23,16 @@ Press **Open Web UI** above to see every piece of art the app can put on the
 board, each drawn chip for chip and labeled with the name to ask for it by.
 **Show in sidebar** on this page puts it a click away.
 
+The cards are grouped by category, which is what a rotation picks within: `art`
+for the daytime pieces, `bedtime` for the quiet ones. The heading over a group
+is the word to send as `category`.
+
 **Capture the board** saves whatever the board is showing right now as a new
-piece, which joins the rotation immediately. Captures are files under
+piece, which joins that category's rotation immediately. The **Into** menu
+beside the button is which category it lands in. Captures are files under
 `/data/art` in the app's own storage, so they survive restarts and updates; the
-gallery marks them `saved`. Capturing the same board twice keeps one copy.
+gallery marks them `saved`. Capturing the same board into the same category
+twice keeps one copy.
 
 Each saved piece has a **Delete** button, which asks first and then throws the
 file away. Pieces that come from `art.py` have no button: they are code.
@@ -38,7 +44,7 @@ Use the **Fire event** action (under *Other actions* in the automation editor):
 
 | Event                 | What it does                                                 |
 | --------------------- | ------------------------------------------------------------ |
-| `vestaboard_show_art` | Shows a piece of pixel art. Optional `name` picks one.       |
+| `vestaboard_show_art` | Shows pixel art. Optional `category` or `name` picks it.     |
 | `vestaboard_text`     | Shows the `text` it is given, laid out by the board.         |
 | `vestaboard_eggs`     | Shows the egg numbers: `today`, `mtd` and `ytd`.             |
 | `vestaboard_smoker`   | Shows a cook: `food`, `air`, and a `duration` to count down. |
@@ -54,8 +60,22 @@ actions:
   - event: vestaboard_show_art
 ```
 
-Leave out `event_data` and the app picks at random, never repeating the piece
-already on the board. To ask for one by name:
+Leave out `event_data` and the app picks at random from the `art` category,
+never repeating the piece already on the board. To pick within another
+category -- the board winding down for the night, on its own automation:
+
+```yaml
+alias: Vestaboard bedtime
+triggers:
+  - trigger: time
+    at: "20:30:00"
+actions:
+  - event: vestaboard_show_art
+    event_data:
+      category: bedtime
+```
+
+To ask for one piece by name, whichever category it is in:
 
 ```yaml
 actions:
@@ -64,10 +84,11 @@ actions:
       name: rainbow
 ```
 
-The names are the keys of `ARTWORKS` in `vestaboard_ha/art.py` -- `rainbow` is
-the only one shipped -- plus anything captured or saved into `/data/art`. The
-gallery lists the lot with the art next to each name. An unknown name is logged
-as an error and leaves the board alone.
+The names are the keys of `ARTWORKS` in `vestaboard_ha/art.py` -- `rainbow` and
+`moon` are the ones shipped -- plus anything captured or saved into `/data/art`.
+The gallery lists the lot with the art next to each name, under the category it
+is in. An unknown name, or a category with nothing in it, is logged as an error
+and leaves the board alone.
 
 ## A message
 
