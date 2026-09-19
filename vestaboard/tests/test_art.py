@@ -5,13 +5,30 @@ from vestaboard_ha import art, charcodes
 
 def test_every_shipped_artwork_is_15x3_and_encodes():
     for name, piece in art.ARTWORKS.items():
-        chips = art.rows(piece)
+        chips = art.rows(piece.art)
         assert len(chips) == 3, name
         assert all(len(row) == 15 for row in chips), name
 
-        grid = art.to_grid(piece)
+        grid = art.to_grid(piece.art)
         assert len(grid) == charcodes.ROWS, name
         assert all(len(row) == charcodes.COLS for row in grid), name
+
+
+def test_a_piece_is_art_unless_it_says_otherwise():
+    assert art.ARTWORKS["rainbow"].category == "art"
+    assert art.ARTWORKS["moon"].category == "bedtime"
+    assert art.Piece("\n🟥\n").category == art.DEFAULT_CATEGORY
+
+
+def test_the_categories_are_the_known_ones_and_any_others_in_play():
+    assert art.categories(art.ARTWORKS) == ["art", "bedtime"]
+
+    pieces = art.ARTWORKS | {"cook": art.Piece("\n🟥\n", category="smoker")}
+
+    # The ones art.py knows in the order it has them, then whatever a saved
+    # piece made up for itself.
+    assert art.categories(pieces) == ["art", "bedtime", "smoker"]
+    assert art.categories({}) == list(art.CATEGORIES)
 
 
 def test_a_square_is_one_chip():
@@ -67,7 +84,8 @@ def test_a_whole_board_is_centered_on_itself():
 
 def test_a_grid_renders_back_to_the_text_it_came_from():
     for piece in art.ARTWORKS.values():
-        assert art.to_grid(art.render(art.to_grid(piece))) == art.to_grid(piece)
+        grid = art.to_grid(piece.art)
+        assert art.to_grid(art.render(grid)) == grid
 
     grid = charcodes.encode_lines(["HI & 5"])
     text = art.render(grid)

@@ -28,28 +28,58 @@ async def test_the_named_artwork_goes_to_the_board(tmp_path):
 
     await rules.show_art(ctx, {"name": "rainbow"})
 
-    assert ctx.board.grids == [art.to_grid(art.ARTWORKS["rainbow"])]
+    assert ctx.board.grids == [art.to_grid(art.ARTWORKS["rainbow"].art)]
 
 
 @pytest.mark.asyncio
 async def test_a_saved_piece_goes_to_the_board_too(tmp_path):
     ctx = FakeContext(tmp_path)
-    (tmp_path / "captured.txt").write_text(art.ARTWORKS["rainbow"].strip("\n") + "\n")
+    (tmp_path / "captured.txt").write_text(
+        art.ARTWORKS["rainbow"].art.strip("\n") + "\n"
+    )
 
     await rules.show_art(ctx, {"name": "captured"})
 
-    assert ctx.board.grids == [art.to_grid(art.ARTWORKS["rainbow"])]
+    assert ctx.board.grids == [art.to_grid(art.ARTWORKS["rainbow"].art)]
 
 
 @pytest.mark.asyncio
-async def test_no_name_means_any_artwork(tmp_path):
+async def test_no_name_means_any_artwork_in_the_art_category(tmp_path):
     ctx = FakeContext(tmp_path)
 
     await rules.show_art(ctx, {})
 
     [grid] = ctx.board.grids
-    assert grid in [art.to_grid(piece) for piece in art.ARTWORKS.values()]
+    assert grid in [
+        art.to_grid(piece.art)
+        for piece in art.ARTWORKS.values()
+        if piece.category == art.DEFAULT_CATEGORY
+    ]
     assert len(grid) == charcodes.ROWS
+
+
+@pytest.mark.asyncio
+async def test_a_category_picks_within_it(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    await rules.show_art(ctx, {"category": "bedtime"})
+
+    # The bedtime pieces and nothing else, so the daytime art stays out of it.
+    [grid] = ctx.board.grids
+    assert grid in [
+        art.to_grid(piece.art)
+        for piece in art.ARTWORKS.values()
+        if piece.category == "bedtime"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_named_piece_comes_up_whatever_the_category_says(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    await rules.show_art(ctx, {"name": "rainbow", "category": "bedtime"})
+
+    assert ctx.board.grids == [art.to_grid(art.ARTWORKS["rainbow"].art)]
 
 
 @pytest.mark.asyncio

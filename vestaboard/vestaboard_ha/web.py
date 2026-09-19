@@ -1,7 +1,9 @@
 """The art gallery: every piece in ``art.py``, drawn chip for chip.
 
 A card shows the piece itself, at the size it is written: the board's own 15x3
-for a full-size piece or a capture, less for a smaller one.
+for a full-size piece or a capture, less for a smaller one. The cards are
+grouped by category, which is what a rule picks within, so the page reads as
+the rotations it is: the art on one heading, the bedtime pieces on another.
 
 Home Assistant serves this page itself, through ingress, so the app appears in
 the sidebar with an **Open Web UI** button and nothing is exposed to the network
@@ -14,8 +16,8 @@ what ``docker-compose.yml`` publishes.
 
 The Capture button posts back to this same path -- ingress rewrites it per
 session, so a form with no action of its own is the one that always lands in
-the right place -- and the redirect afterwards is built from the path ingress
-tells us it is serving us at.
+the right place -- along with the category to capture into, and the redirect
+afterwards is built from the path ingress tells us it is serving us at.
 """
 
 from __future__ import annotations
@@ -134,6 +136,22 @@ button {
 button:hover { opacity: .87; }
 button:active { transform: translateY(1px); }
 button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+/* Where a capture lands. It sits against the button it belongs to. */
+.capture {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+select {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+select:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 /* Delete sits on a card and should not compete with the art. */
 .quiet {
   padding: 4px 8px;
@@ -177,10 +195,24 @@ code {
 .gallery {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 28px;
   max-width: 720px;
   margin: 0 auto;
   padding: 16px 16px 56px;
+}
+/* One category and the pieces in it. */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.category {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 .piece {
   background: var(--card);
@@ -314,10 +346,10 @@ def delete_form(name: str) -> str:
     )
 
 
-def piece(name: str, artwork: str, *, saved: bool = False) -> str:
+def piece(name: str, artwork: art.Piece, *, saved: bool = False) -> str:
     """One card. A piece that no longer encodes says so instead of vanishing."""
     try:
-        body = board(artwork, f"the {name} artwork")
+        body = board(artwork.art, f"the {name} artwork")
     except ValueError as exc:
         _LOGGER.warning("artwork %s does not encode: %s", name, exc)
         body = (
@@ -328,29 +360,76 @@ def piece(name: str, artwork: str, *, saved: bool = False) -> str:
     label = html.escape(name) + ('<span class="tag">saved</span>' if saved else "")
     return (
         '<article class="piece">'
-        f'<h2 class="name">{label}{delete_form(name) if saved else ""}</h2>'
+        f'<h3 class="name">{label}{delete_form(name) if saved else ""}</h3>'
         f"{body}</article>"
     )
 
 
+def group(
+    category: str, artworks: Mapping[str, art.Piece], saved: Container[str]
+) -> str:
+    """One category and its cards, under a heading naming the category.
+
+    The heading is the word an automation sends as ``category``, so the page
+    says what to ask for as well as what there is.
+    """
+    cards = "".join(
+        piece(name, artwork, saved=name in saved)
+        for name, artwork in artworks.items()
+        if artwork.category == category
+    )
+    if not cards:
+        return ""
+    return (
+        '<section class="group">'
+        f'<h2 class="category">{html.escape(category)}</h2>{cards}</section>'
+    )
+
+
+def capture_form(artworks: Mapping[str, art.Piece]) -> str:
+    """The header's Capture button, and the category the capture lands in.
+
+    Every category we know is offered, whether or not it has anything in it yet
+    -- an empty one is exactly what somebody capturing into it is filling.
+    """
+    options = "".join(
+        f'<option value="{html.escape(category)}"'
+        f'{" selected" if category == art.DEFAULT_CATEGORY else ""}>'
+        f"{html.escape(category)}</option>"
+        for category in art.categories(artworks)
+    )
+    return (
+        '<form method="post" class="capture">'
+        f'<label>Into <select name="category">{options}</select></label>'
+        '<button name="capture" value="board">Capture the board</button>'
+        "</form>"
+    )
+
+
 def page(
-    artworks: dict[str, str],
+    artworks: Mapping[str, art.Piece],
     *,
     saved: Container[str] = (),
     notice: str = "",
     bad_news: bool = False,
 ) -> str:
-    """The whole gallery, one card per piece, built-in pieces first."""
+    """The whole gallery, a card per piece, grouped by category.
+
+    The categories come in the order ``art.py`` has them, with any a saved piece
+    made up itself after them; within a category the pieces keep the order the
+    library hands them over in, which is the built-in ones first.
+    """
     if artworks:
         count = len(artworks)
         summary = (
             f"{count} piece{'' if count == 1 else 's'}. Fire "
-            "<code>vestaboard_show_art</code> for a random one, or name a piece "
-            "in <code>event_data</code> to ask for it."
+            "<code>vestaboard_show_art</code> for a random one from the "
+            "<code>art</code> category, add a <code>category</code> to "
+            "<code>event_data</code> to pick within another, or a "
+            "<code>name</code> to ask for one piece."
         )
         cards = "".join(
-            piece(name, artwork, saved=name in saved)
-            for name, artwork in artworks.items()
+            group(category, artworks, saved) for category in art.categories(artworks)
         )
     else:
         summary = "Nothing in <code>ARTWORKS</code> yet."
@@ -376,7 +455,7 @@ def page(
 <h1>Art gallery</h1>
 <p>{summary}</p>
 </div>
-<form method="post"><button name="capture" value="board">Capture the board</button></form>
+{capture_form(artworks)}
 </div></header>
 {banner}
 <main class="gallery">{cards}</main>
@@ -410,16 +489,17 @@ def notice_for(library: Library, query: Mapping[str, str]) -> str:
     that means checking we have it, and for a deleted one, which we will not
     find, that it is at least shaped like one of ours.
     """
+    saved = library.saved()
     for key, said in (
-        ("saved", "Captured as {}. It is in the rotation now."),
-        ("again", "The board is already saved as {}."),
+        ("saved", "Captured as {} in {}. It is in the rotation now."),
+        ("again", "The board is already saved as {} in {}."),
     ):
         name = query.get(key, "")
-        if name and name in library.saved():
-            return said.format(name)
+        if name and name in saved:
+            return said.format(name, saved[name].category)
 
     gone = query.get("deleted", "")
-    if gone and PIECE_NAME.fullmatch(gone) and gone not in library.saved():
+    if gone and PIECE_NAME.fullmatch(gone) and gone not in saved:
         return f"Deleted {gone}."
     return ""
 
@@ -441,13 +521,13 @@ async def posted(request: web.Request) -> web.Response:
     form = await request.post()
     if "delete" in form:
         return await delete(request, ctx, str(form["delete"]))
-    return await capture(request, ctx)
+    return await capture(request, ctx, str(form.get("category", "")))
 
 
-async def capture(request: web.Request, ctx: Any) -> web.Response:
-    """Save what is on the board right now as a new piece."""
+async def capture(request: web.Request, ctx: Any, category: str = "") -> web.Response:
+    """Save what is on the board right now as a new piece in that category."""
     try:
-        saved = ctx.art.capture(await ctx.board.read())
+        saved = ctx.art.capture(await ctx.board.read(), category)
     except (BoardError, ValueError, OSError) as exc:
         _LOGGER.warning("could not capture the board: %s", exc)
         return show(ctx.art, f"Could not capture the board: {exc}", bad_news=True)
