@@ -16,7 +16,7 @@ def test_every_shipped_artwork_is_15x3_and_encodes():
 
 def test_a_piece_is_art_unless_it_says_otherwise():
     assert art.ARTWORKS["rainbow"].category == "art"
-    assert art.ARTWORKS["moon"].category == "bedtime"
+    assert art.ARTWORKS["zzz"].category == "bedtime"
     assert art.Piece("\n🟥\n").category == art.DEFAULT_CATEGORY
 
 
