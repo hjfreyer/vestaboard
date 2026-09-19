@@ -203,7 +203,7 @@ a piece mix the two:
 """),
 ```
 
-`art.py` ships with `rainbow` and `moon` and nothing else; everything past that
+`art.py` ships with `rainbow` and `zzz` and nothing else; everything past that
 is yours to write, or to capture.
 
 Lines are written flush left and may stop early; the right side is padded with
@@ -217,10 +217,10 @@ piece is in when it does not say otherwise, and `bedtime` is the other one
 shipped -- the quiet pieces, which the daytime rotation should not reach for:
 
 ```python
-    "moon": Piece("""
-⬛⬜⬛⬛⬛⬛⬛⬛⬜⬛⬛⬛🟨🟨⬛
-⬛⬛⬛⬛⬜⬛⬛⬛⬛⬛⬛🟨🟨🟨⬛
-⬛⬛⬜⬛⬛⬛⬛⬜⬛⬛⬛⬛🟨🟨⬛
+    "zzz": Piece("""
+ Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z
+ Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z
+ Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z
 """, category="bedtime"),
 ```
 

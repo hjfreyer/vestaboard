@@ -78,10 +78,11 @@ ARTWORKS: dict[str, Piece] = {
 🟧🟧🟧🟨🟨🟨🟩🟩🟩🟦🟦🟦🟪🟪🟪
 🟨🟨🟨🟩🟩🟩🟦🟦🟦🟪🟪🟪🟥🟥🟥
 """),
-    "moon": Piece("""
-⬛⬜⬛⬛⬛⬛⬛⬛⬜⬛⬛⬛🟨🟨⬛
-⬛⬛⬛⬛⬜⬛⬛⬛⬛⬛⬛🟨🟨🟨⬛
-⬛⬛⬜⬛⬛⬛⬛⬜⬛⬛⬛⬛🟨🟨⬛
+    # Three rows of Z, which is what a board says at bedtime.
+    "zzz": Piece("""
+ Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z
+ Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z
+ Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z
 """, category="bedtime"),
 }
 

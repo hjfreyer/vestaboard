@@ -85,7 +85,7 @@ actions:
 ```
 
 The names are the keys of `ARTWORKS` in `vestaboard_ha/art.py` -- `rainbow` and
-`moon` are the ones shipped -- plus anything captured or saved into `/data/art`.
+`zzz` are the ones shipped -- plus anything captured or saved into `/data/art`.
 The gallery lists the lot with the art next to each name, under the category it
 is in. An unknown name, or a category with nothing in it, is logged as an error
 and leaves the board alone.
