@@ -162,12 +162,12 @@ is missing or is not a number shows as `?` rather than costing the board the
 others, and a cook past ten hours takes the chip its `12:06` needs from every
 row at once, so the readings stay in a column.
 
-`vestaboard_morning` is the third: the date down the left, the day's forecast
+`vestaboard_forecast` is the third: the date down the left, the day's weather
 drawn in the middle, and its high over its low on the right, each said in
 Fahrenheit and in Celsius.
 
 ```yaml
-alias: Vestaboard morning
+alias: Vestaboard forecast
 triggers:
   - trigger: time
     at: "06:45:00"
@@ -178,7 +178,7 @@ actions:
     data:
       type: daily
     response_variable: forecasts
-  - event: vestaboard_morning
+  - event: vestaboard_forecast
     event_data:
       condition: "{{ forecasts['weather.home'].forecast[0].condition }}"
       high: "{{ forecasts['weather.home'].forecast[0].temperature }}"
@@ -186,9 +186,9 @@ actions:
 ```
 
 ```
- S U N⬛⬛⬜⬜⬛⬛ 7 0⬛⬛ 2 1
- S E P⬛⬜⬜⬜⬜⬛ 4 8⬛⬛⬛ 9
- 2 0⬛⬛ :⬛ :⬛⬛⬛ F⬛⬛⬛ C
+ S U N⬛⬛⬜⬜⬛⬛⬛ 7 0⬛ 2 1
+ S E P⬛⬜⬜⬜⬜⬛⬛ 4 8⬛⬛ 9
+ 2 0⬛⬛ :⬛ :⬛⬛⬛⬛ F⬛⬛ C
 ```
 
 `weather.get_forecasts` is how Home Assistant hands out a forecast, and its
@@ -212,8 +212,10 @@ That renders to `°C` or `°F`, both of which this takes, as it does a plain `C`
 or `F`; `temperature_unit` works as a key name as well as `unit`. Whichever
 unit comes in, both columns go up -- the other one is worked out here. A
 temperature that is missing or is not one shows as `?` in both columns, and
-three chips a temperature is enough for a `100`F afternoon and a `-20`C
-morning alike.
+each column is as wide as the widest reading in it, so an
+ordinary `21`C leaves the chip a `-11`C would have taken to the middle of the
+board. Three chips is as wide as a column gets, which is a `100`F afternoon
+and a `-20`C morning both.
 
 `condition` is one of the fifteen a Home Assistant weather entity can report,
 and `rules.py` draws every one of them in the four chips in the middle:

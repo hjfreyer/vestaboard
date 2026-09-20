@@ -388,7 +388,7 @@ async def smoker(ctx: Context, data: dict[str, Any]) -> None:
 #: Home Assistant's weather entities all report one of these fifteen
 #: conditions, whichever service the forecast came from, so this is the whole
 #: list there is to draw. Each is the ICON_COLS chips that go in the middle of
-#: the morning board, written out to the last one, in the squares art.py uses.
+#: the forecast board, written out to the last one, in the squares art.py uses.
 #: A cloud is the same pyramid wherever it appears, and what falls out of it is
 #: written as characters -- rain as colons, a downpour as slashes, snow as
 #: hashes, hail as its stones -- which read as falling where a chip under a
@@ -396,7 +396,7 @@ async def smoker(ctx: Context, data: dict[str, Any]) -> None:
 #: across -- a gust from a variant gust, a clear day from a clear night -- and
 #: those are drawn alike on purpose; the board is saying take a coat, not
 #: reading out the METAR.
-FORECASTS: dict[str, str] = {
+CONDITIONS: dict[str, str] = {
     "sunny": """
 🟨🟨🟨🟨
 🟨🟨🟨🟨
@@ -477,27 +477,33 @@ FORECASTS: dict[str, str] = {
 #: What goes in the middle when the automation sent a condition we have never
 #: heard of, or none at all. A board that says it does not know beats a board
 #: that quietly draws sunshine.
-UNKNOWN_FORECAST = """
+UNKNOWN_CONDITION = """
 ⬛⬛⬛⬛
 ⬛ ?⬛⬛
 ⬛⬛⬛⬛
 """
 
-#: The three columns of the morning board: the date on the left, the forecast
-#: in the middle, and the temperatures against the right edge. The forecast is
-#: four chips wide and every temperature three, which holds a 100F afternoon
-#: and a -20C morning alike.
+#: The three columns of the forecast board: the date on the left, the condition
+#: drawn in the middle, and the temperatures against the right edge. The date
+#: is three chips, since a weekday and a month are three letters and a day of
+#: the month two digits, and the condition four. The temperatures take what
+#: they need of the rest, and the condition sits in the middle of what is left.
 DATE_COL = 0
-ICON_COL = 4
+DATE_COLS = 3
 ICON_COLS = 4
-TEMP_COL = 8
-TEMP_WIDTH = 3
+
+#: What a column of temperatures takes: as many chips as its widest reading.
+#: Never fewer than two, so that a 9C morning and a 10C one put the board up
+#: the same way, and never more than three, which is a 100F afternoon and a
+#: -20C morning both.
+MIN_TEMP_WIDTH = 2
+MAX_TEMP_WIDTH = 3
 
 
 def _either(data: dict[str, Any], *keys: str) -> Any:
     """The first of these keys the automation said anything under.
 
-    Each thing the morning board wants has two names: ours, and the one a
+    Each thing the forecast board wants has two names: ours, and the one a
     Home Assistant forecast entry already calls it. That is what lets an
     automation hand the entry over whole rather than picking it apart.
     """
@@ -520,7 +526,7 @@ def _forecast_date(raw: Any, today: date | None = None) -> date:
         try:
             return datetime.fromisoformat(str(raw).strip()).date()
         except ValueError:
-            _LOGGER.warning("morning: %r is not a date, using today", raw)
+            _LOGGER.warning("forecast: %r is not a date, using today", raw)
     return today or date.today()
 
 
@@ -563,7 +569,7 @@ def _unit(raw: Any) -> str:
         return DEFAULT_UNIT
     unit = UNITS.get(said)
     if unit is None:
-        _LOGGER.warning("morning: %r is not a unit, reading it as Celsius", raw)
+        _LOGGER.warning("forecast: %r is not a unit, reading it as Celsius", raw)
         return DEFAULT_UNIT
     return unit
 
@@ -575,33 +581,67 @@ def _degrees(value: float) -> str:
     automation sent something that is not a temperature.
     """
     text = str(round(value))
-    if len(text) <= TEMP_WIDTH:
+    if len(text) <= MAX_TEMP_WIDTH:
         return text
-    _LOGGER.warning("morning: %s needs more than %d chips", text, TEMP_WIDTH)
+    _LOGGER.warning("forecast: %s needs more than %d chips", text, MAX_TEMP_WIDTH)
     return "?"
 
 
-def _temperatures(reading: Any, unit: str = DEFAULT_UNIT) -> str:
-    """One row of the right-hand column: the same temperature in F and in C.
+def _both(reading: Any, unit: str) -> tuple[str, str]:
+    """One reading in Fahrenheit and in Celsius, whichever it arrived as.
 
     The automation sends the reading in whichever unit its Home Assistant hands
-    forecasts out in, and the other column is ours to work out. A reading that
-    is missing or is not a number shows as ``?`` in both, rather than costing us
-    the board.
+    forecasts out in, and the other one is ours to work out. A reading that is
+    missing or is not a number is ``?`` in both, rather than costing us the
+    board.
     """
-    number = _number(reading, "morning")
+    number = _number(reading, "forecast")
     if number is None:
-        return f"{'?':>{TEMP_WIDTH}} {'?':>{TEMP_WIDTH}}"
-
+        return "?", "?"
     if unit == "F":
-        fahrenheit, celsius = number, (number - 32) * 5 / 9
-    else:
-        fahrenheit, celsius = number * 9 / 5 + 32, number
-    return f"{_degrees(fahrenheit):>{TEMP_WIDTH}} {_degrees(celsius):>{TEMP_WIDTH}}"
+        return _degrees(number), _degrees((number - 32) * 5 / 9)
+    return _degrees(number * 9 / 5 + 32), _degrees(number)
 
 
-def morning_grid(data: dict[str, Any], today: date | None = None) -> list[list[int]]:
-    """The morning board: the date, the day's forecast, and its temperatures.
+def temperatures(data: dict[str, Any]) -> tuple[str, ...]:
+    """The right-hand column: the high, the low, and which column is which.
+
+    Each column is as wide as the widest reading in it, so a board whose
+    Celsius is two digits -- which is most of them -- does not hold a third
+    chip back against the days it is three. The middle of the board gets it
+    instead, and the columns still line up under one another and under their
+    own letter.
+    """
+    unit = _unit(_either(data, "unit", "temperature_unit"))
+    high = _both(_either(data, "high", "temperature"), unit)
+    low = _both(_either(data, "low", "templow"), unit)
+
+    warm, cool = (
+        max(MIN_TEMP_WIDTH, len(high[side]), len(low[side])) for side in (0, 1)
+    )
+    return tuple(
+        f"{fahrenheit:>{warm}} {celsius:>{cool}}"
+        for fahrenheit, celsius in (high, low, ("F", "C"))
+    )
+
+
+def condition_col(width: int) -> int:
+    """Where the condition is drawn: the middle of what the temperatures left.
+
+    ``width`` is how many chips they took, so a board whose readings are short
+    draws the weather further from the date than one whose readings are long.
+    """
+    room = charcodes.COLS - width - (DATE_COL + DATE_COLS)
+    if room < ICON_COLS:
+        raise ValueError(
+            f"{room} chips between the date and the temperatures is too few "
+            f"for a condition, which takes {ICON_COLS}"
+        )
+    return DATE_COL + DATE_COLS + (room - ICON_COLS) // 2
+
+
+def forecast_grid(data: dict[str, Any], today: date | None = None) -> list[list[int]]:
+    """The forecast board: the date, the day's weather, and its temperatures.
 
     ``today`` is only there for the tests; the rule lets ``_forecast_date``
     work out the day.
@@ -614,39 +654,38 @@ def morning_grid(data: dict[str, Any], today: date | None = None) -> list[list[i
             grid[row][DATE_COL + col] = charcodes.encode_char(char)
 
     condition = str(data.get("condition", "")).strip().lower()
-    icon = FORECASTS.get(condition)
+    icon = CONDITIONS.get(condition)
     if icon is None:
-        _LOGGER.warning("morning: %r is not a forecast I can draw", condition)
-        icon = UNKNOWN_FORECAST
+        _LOGGER.warning("forecast: %r is not a forecast I can draw", condition)
+        icon = UNKNOWN_CONDITION
 
     chips = art.rows(icon)
     if (len(chips), len(chips[0])) != (charcodes.ROWS, ICON_COLS):
         raise ValueError(
-            f"a forecast is {charcodes.ROWS} rows of {ICON_COLS} chips, not "
+            f"a condition is {charcodes.ROWS} rows of {ICON_COLS} chips, not "
             f"{len(chips)} of {len(chips[0])}"
         )
-    for row, line in enumerate(chips):
-        for col, chip in enumerate(line):
-            grid[row][ICON_COL + col] = art.encode_chip(chip)
 
     # The high, the low, and which column is which, so the two numbers on a row
-    # are one temperature said twice rather than two temperatures.
-    unit = _unit(_either(data, "unit", "temperature_unit"))
-    rows = (
-        _temperatures(_either(data, "high", "temperature"), unit),
-        _temperatures(_either(data, "low", "templow"), unit),
-        f"{'F':>{TEMP_WIDTH}} {'C':>{TEMP_WIDTH}}",
-    )
-    for row, line in enumerate(rows):
+    # are one temperature said twice rather than two temperatures. They end on
+    # the board's last chip, and what they did not need is the middle's.
+    readings = temperatures(data)
+    start = charcodes.COLS - len(readings[0])
+    for row, line in enumerate(readings):
         for col, char in enumerate(line):
-            grid[row][TEMP_COL + col] = charcodes.encode_char(char)
+            grid[row][start + col] = charcodes.encode_char(char)
+
+    icon_col = condition_col(len(readings[0]))
+    for row, line in enumerate(chips):
+        for col, chip in enumerate(line):
+            grid[row][icon_col + col] = art.encode_chip(chip)
 
     return grid
 
 
-@on_action("morning")
-async def morning(ctx: Context, data: dict[str, Any]) -> None:
-    """Fire ``vestaboard_morning`` to put the day and its weather up.
+@on_action("forecast")
+async def forecast(ctx: Context, data: dict[str, Any]) -> None:
+    """Fire ``vestaboard_forecast`` to put the day and its weather up.
 
     It takes the day's forecast -- ``condition``, and ``high`` and ``low``,
     which a daily forecast calls ``temperature`` and ``templow``::
@@ -658,7 +697,7 @@ async def morning(ctx: Context, data: dict[str, Any]) -> None:
             data:
               type: daily
             response_variable: forecasts
-          - event: vestaboard_morning
+          - event: vestaboard_forecast
             event_data:
               condition: "{{ forecasts['weather.home'].forecast[0].condition }}"
               high: "{{ forecasts['weather.home'].forecast[0].temperature }}"
@@ -673,7 +712,7 @@ async def morning(ctx: Context, data: dict[str, Any]) -> None:
     knows its own answer::
 
         actions:
-          - event: vestaboard_morning
+          - event: vestaboard_forecast
             event_data:
               unit: "{{ state_attr('weather.home', 'temperature_unit') }}"
               ...
@@ -685,4 +724,4 @@ async def morning(ctx: Context, data: dict[str, Any]) -> None:
     date is ours unless the automation sends one -- as ``date``, or as the
     ``datetime`` a forecast entry carries.
     """
-    await ctx.board.send_characters(morning_grid(data))
+    await ctx.board.send_characters(forecast_grid(data))

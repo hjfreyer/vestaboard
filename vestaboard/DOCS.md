@@ -48,7 +48,7 @@ Use the **Fire event** action (under *Other actions* in the automation editor):
 | `vestaboard_text`     | Shows the `text` it is given, laid out by the board.         |
 | `vestaboard_eggs`     | Shows the egg numbers: `today`, `mtd` and `ytd`.             |
 | `vestaboard_smoker`   | Shows a cook: `food`, `air`, and a `duration` to count down. |
-| `vestaboard_morning`  | Shows the date, the day's forecast, and its high and low.    |
+| `vestaboard_forecast` | Shows the date, the day's weather, and its high and low.     |
 
 A half-hourly rotation, then, is an automation and not a code change:
 
@@ -91,14 +91,14 @@ The gallery lists the lot with the art next to each name, under the category it
 is in. An unknown name, or a category with nothing in it, is logged as an error
 and leaves the board alone.
 
-## The morning
+## The forecast
 
-`vestaboard_morning` puts the day up: the date down the left, the forecast
+`vestaboard_forecast` puts the day up: the date down the left, the weather
 drawn in the middle, and the day's high over its low on the right, each in
 Fahrenheit and in Celsius.
 
 ```yaml
-alias: Vestaboard morning
+alias: Vestaboard forecast
 triggers:
   - trigger: time
     at: "06:45:00"
@@ -109,7 +109,7 @@ actions:
     data:
       type: daily
     response_variable: forecasts
-  - event: vestaboard_morning
+  - event: vestaboard_forecast
     event_data:
       condition: "{{ forecasts['weather.home'].forecast[0].condition }}"
       high: "{{ forecasts['weather.home'].forecast[0].temperature }}"
