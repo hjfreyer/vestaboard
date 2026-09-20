@@ -474,43 +474,57 @@ def test_a_label_leaving_no_room_for_the_smoke_is_an_error(monkeypatch):
 def date_column(grid):
     """The date down the left, as the text the board will show."""
     return [
-        "".join(charcodes.CODE_TO_CHAR[code] for code in row[: rules.ICON_COL]).strip()
+        "".join(charcodes.CODE_TO_CHAR[code] for code in row[: rules.DATE_COLS]).strip()
         for row in grid
     ]
 
 
-def temperature_column(grid):
-    """The temperatures on the right, as the text the board will show."""
+def board_text(grid):
+    """The whole board as text, with a # for each colored chip."""
     return [
-        "".join(charcodes.CODE_TO_CHAR[code] for code in row[rules.TEMP_COL :])
-        for row in grid
+        "".join(charcodes.CODE_TO_CHAR.get(code, "#") for code in row) for row in grid
     ]
 
 
-def forecast_chips(grid):
-    """The middle of the board: the chips the forecast was drawn as."""
-    return [row[rules.ICON_COL : rules.ICON_COL + rules.ICON_COLS] for row in grid]
+def condition_chips(grid, data):
+    """The middle of the board: the chips the condition was drawn as."""
+    col = rules.condition_col(len(rules.temperatures(data)[0]))
+    return [row[col : col + rules.ICON_COLS] for row in grid]
 
 
-A_MORNING = {"condition": "rainy", "high": 21, "low": 9}
+A_FORECAST = {"condition": "rainy", "high": 21, "low": 9}
 LEAP_DAY = date(2024, 2, 29)
 
+#: What weather.get_forecasts gives for a day, whose three fields an automation
+#: copies into the event under the names they already have.
+AN_ENTRY = {
+    "datetime": "2024-02-29T00:00:00-08:00",
+    "condition": "rainy",
+    "temperature": 21,
+    "templow": 9,
+    "precipitation_probability": 80,
+    "wind_speed": 11.2,
+}
 
-def test_every_forecast_is_written_out_to_the_chips_it_fills():
-    for condition, icon in (*rules.FORECASTS.items(), ("?", rules.UNKNOWN_FORECAST)):
-        chips = art.rows(icon)  # raises if the forecast does not parse
+
+def test_every_condition_is_written_out_to_the_chips_it_fills():
+    for condition, icon in (
+        *rules.CONDITIONS.items(),
+        ("?", rules.UNKNOWN_CONDITION),
+    ):
+        chips = art.rows(icon)  # raises if the condition does not parse
 
         assert len(chips) == charcodes.ROWS, condition
-        # Every row to the last chip, so no forecast leans on being padded out.
+        # Every row to the last chip, so none leans on being padded out.
         assert [len(row) for row in chips] == [rules.ICON_COLS] * charcodes.ROWS, (
             condition
         )
 
 
-def test_every_home_assistant_condition_has_a_forecast():
+def test_every_home_assistant_condition_can_be_drawn():
     # The fifteen a weather entity can report; anything else is not a condition
     # Home Assistant has, whichever integration the forecast came from.
-    assert set(rules.FORECASTS) == {
+    assert set(rules.CONDITIONS) == {
         "clear-night",
         "cloudy",
         "exceptional",
@@ -529,61 +543,143 @@ def test_every_home_assistant_condition_has_a_forecast():
     }
 
 
-def test_the_morning_board_is_the_date_the_forecast_and_the_temperatures():
-    grid = rules.morning_grid(A_MORNING, today=LEAP_DAY)
+def test_the_board_is_the_date_the_condition_and_the_temperatures():
+    grid = rules.forecast_grid(A_FORECAST, today=LEAP_DAY)
 
-    assert date_column(grid) == ["THU", "FEB", "29"]
-    assert forecast_chips(grid) == chips_of(rules.FORECASTS["rainy"])
-    # The high over the low, each said in Fahrenheit and then in Celsius.
-    assert temperature_column(grid) == [" 70  21", " 48   9", "  F   C"]
+    # The date left, the cloud in the middle, the readings on the last chip.
+    assert board_text(grid) == [
+        "THU  ##   70 21",
+        "FEB ####  48  9",
+        "29  : :    F  C",
+    ]
+
+
+def test_the_readings_take_what_they_need_and_the_middle_gets_the_rest():
+    # A Celsius that wants three chips takes the one the two-chip board left
+    # in the middle; either way the readings end on the board's last chip.
+    freezing = board_text(
+        rules.forecast_grid({**A_FORECAST, "high": -2, "low": -11}, today=LEAP_DAY)
+    )
+
+    assert freezing == [
+        "THU  ##  28  -2",
+        "FEB #### 12 -11",
+        "29  : :   F   C",
+    ]
+
+    # Three chips in both columns is as wide as readings get -- a 100F day
+    # whose night is -20F, which is no weather at all -- and there the
+    # condition gives up its own room rather than the readings shrinking.
+    widest = board_text(
+        rules.forecast_grid({**A_FORECAST, "high": 38, "low": -29}, today=LEAP_DAY)
+    )
+
+    assert widest == [
+        "THU ##  100  38",
+        "FEB#### -20 -29",
+        "29 : :    F   C",
+    ]
+
+
+def test_a_column_is_as_wide_as_the_widest_reading_in_it():
+    assert rules.temperatures({"high": 21, "low": 9}) == ("70 21", "48  9", " F  C")
+    assert rules.temperatures({"high": 38, "low": 24}) == ("100 38", " 75 24", "  F  C")
+    assert rules.temperatures({"high": -2, "low": -11}) == ("28  -2", "12 -11", " F   C")
+    # Never narrower than two, so a 9C morning and a 10C one look the same.
+    assert rules.temperatures({"high": 9, "low": 3}) == ("48  9", "37  3", " F  C")
 
 
 def test_the_automation_sends_celsius_and_fahrenheit_is_ours_to_work_out():
-    grid = rules.morning_grid({"high": 37.6, "low": -12.4}, today=LEAP_DAY)
-
     # Rounded, not truncated: 37.6C is 99.7F, which is a 100F day, and the
     # -12.4C morning is 9.7F rather than the 9F that dropping the decimal gives.
-    assert temperature_column(grid)[:2] == ["100  38", " 10 -12"]
+    assert rules.temperatures({"high": 37.6, "low": -12.4})[:2] == ("100  38", " 10 -12")
+
+
+def test_a_board_whose_home_assistant_is_fahrenheit_says_so():
+    said = rules.temperatures({"high": 70, "low": 48, "unit": "F"})
+
+    # The same two temperatures as the Celsius board, sent the other way round.
+    assert said == ("70 21", "48  9", " F  C")
+
+
+def test_the_unit_can_be_the_weather_entity_s_own_answer():
+    # What state_attr(..., 'temperature_unit') renders to, degree sign and all.
+    for fahrenheit in ("°F", "f", " Fahrenheit "):
+        assert rules.temperatures({"high": 70, "unit": fahrenheit})[0] == "70 21", (
+            fahrenheit
+        )
+
+    for celsius in ("°C", "c", "CELSIUS", "", None):
+        assert rules.temperatures({"high": 21, "unit": celsius})[0] == "70 21", celsius
+
+
+def test_the_unit_answers_to_the_name_the_entity_gives_it():
+    assert rules.temperatures({"high": 70, "temperature_unit": "°F"})[0] == "70 21"
+
+
+def test_something_that_is_not_a_unit_is_read_as_celsius_and_logged(caplog):
+    assert rules.temperatures({"high": 21, "unit": "kelvin"})[0] == "70 21"
+    assert "not a unit" in caplog.text
+
+
+def test_a_fahrenheit_board_still_reads_a_freezing_morning():
+    said = rules.temperatures({"high": 10, "low": -20, "unit": "F"})
+
+    assert said[:2] == (" 10 -12", "-20 -29")
 
 
 def test_a_temperature_that_is_missing_or_is_not_one_is_a_question_mark(caplog):
-    grid = rules.morning_grid({"condition": "sunny", "low": "unavailable"})
+    assert rules.temperatures({"low": "unavailable"})[:2] == (" ?  ?", " ?  ?")
+    assert "forecast" in caplog.text
 
-    assert temperature_column(grid)[:2] == ["  ?   ?", "  ?   ?"]
-    assert "morning" in caplog.text
+
+def test_a_forecast_entry_s_own_names_are_taken_too():
+    assert rules.forecast_grid(AN_ENTRY) == rules.forecast_grid(
+        A_FORECAST, today=LEAP_DAY
+    )
+
+
+def test_our_own_names_win_over_the_forecast_s():
+    said = rules.temperatures({"high": 30, "temperature": 21, "low": 20, "templow": 9})
+
+    assert said[:2] == ("86 30", "68 20")
 
 
 def test_a_condition_we_cannot_draw_says_so_rather_than_guessing(caplog):
-    grid = rules.morning_grid({"condition": "meteor-shower"}, today=LEAP_DAY)
+    data = {**A_FORECAST, "condition": "meteor-shower"}
 
-    assert forecast_chips(grid) == chips_of(rules.UNKNOWN_FORECAST)
+    grid = rules.forecast_grid(data, today=LEAP_DAY)
+
+    assert condition_chips(grid, data) == chips_of(rules.UNKNOWN_CONDITION)
     assert "meteor-shower" in caplog.text
     # The rest of the board is still the board.
     assert date_column(grid) == ["THU", "FEB", "29"]
 
 
 def test_a_condition_is_taken_however_the_automation_spelled_it():
-    grid = rules.morning_grid({"condition": " Partlycloudy\n"}, today=LEAP_DAY)
+    data = {**A_FORECAST, "condition": " Partlycloudy\n"}
 
-    assert forecast_chips(grid) == chips_of(rules.FORECASTS["partlycloudy"])
+    grid = rules.forecast_grid(data, today=LEAP_DAY)
+
+    assert condition_chips(grid, data) == chips_of(rules.CONDITIONS["partlycloudy"])
 
 
 def test_the_automation_can_say_which_day_it_is():
     # What a template or a forecast's own datetime renders to, both of which an
     # automation knows the timezone of better than we do.
     for sent in ("2024-02-29", "2024-02-29T07:00:00-08:00"):
-        assert date_column(rules.morning_grid({"date": sent})) == ["THU", "FEB", "29"]
+        assert date_column(rules.forecast_grid({"date": sent})) == ["THU", "FEB", "29"]
 
 
 def test_a_date_that_is_not_one_falls_back_to_today(caplog):
-    grid = rules.morning_grid({"date": "tomorrow"}, today=LEAP_DAY)
+    grid = rules.forecast_grid({"date": "tomorrow"}, today=LEAP_DAY)
 
     assert date_column(grid) == ["THU", "FEB", "29"]
     assert "not a date" in caplog.text
 
 
 def test_no_date_at_all_is_the_day_the_board_went_up():
-    grid = rules.morning_grid({"condition": "sunny"})
+    grid = rules.forecast_grid({"condition": "sunny"})
 
     assert date_column(grid) == [
         date.today().strftime("%a").upper(),
@@ -592,81 +688,28 @@ def test_no_date_at_all_is_the_day_the_board_went_up():
     ]
 
 
-def test_a_forecast_that_is_not_the_size_of_its_chips_is_an_error(monkeypatch):
-    monkeypatch.setitem(rules.FORECASTS, "sunny", "⬜⬜⬜⬜⬜\n⬜⬜⬜⬜⬜\n⬜⬜⬜⬜⬜")
+def test_a_condition_that_is_not_the_size_of_its_chips_is_an_error(monkeypatch):
+    monkeypatch.setitem(rules.CONDITIONS, "sunny", "⬜⬜⬜⬜⬜\n⬜⬜⬜⬜⬜\n⬜⬜⬜⬜⬜")
 
-    with pytest.raises(ValueError, match="a forecast is 3 rows of 4 chips"):
-        rules.morning_grid({"condition": "sunny"})
+    with pytest.raises(ValueError, match="a condition is 3 rows of 4 chips"):
+        rules.forecast_grid({"condition": "sunny"})
+
+
+def test_readings_that_would_crowd_out_the_condition_are_an_error(monkeypatch):
+    # Not something a temperature can do; something a change to these could.
+    monkeypatch.setattr(rules, "MIN_TEMP_WIDTH", 5)
+
+    with pytest.raises(ValueError, match="too few"):
+        rules.forecast_grid(A_FORECAST)
 
 
 @pytest.mark.asyncio
-async def test_the_morning_board_goes_to_the_board(tmp_path):
+async def test_the_forecast_board_goes_to_the_board(tmp_path):
     ctx = FakeContext(tmp_path)
 
-    await rules.morning(ctx, A_MORNING)
+    await rules.forecast(ctx, A_FORECAST)
 
     [grid] = ctx.board.grids
     assert len(grid) == charcodes.ROWS
     assert all(len(row) == charcodes.COLS for row in grid)
-    assert forecast_chips(grid) == chips_of(rules.FORECASTS["rainy"])
-
-
-#: What weather.get_forecasts gives for a day, whose three fields an automation
-#: copies into the event under the names they already have.
-AN_ENTRY = {
-    "datetime": "2024-02-29T00:00:00-08:00",
-    "condition": "rainy",
-    "temperature": 21,
-    "templow": 9,
-    "precipitation_probability": 80,
-    "wind_speed": 11.2,
-}
-
-
-def test_a_forecast_entry_s_own_names_are_taken_too():
-    assert rules.morning_grid(AN_ENTRY) == rules.morning_grid(A_MORNING, today=LEAP_DAY)
-
-
-def test_our_own_names_win_over_the_forecast_s():
-    grid = rules.morning_grid(
-        {"high": 30, "temperature": 21, "low": 20, "templow": 9}, today=LEAP_DAY
-    )
-
-    assert temperature_column(grid)[:2] == [" 86  30", " 68  20"]
-
-
-def test_a_board_whose_home_assistant_is_fahrenheit_says_so():
-    grid = rules.morning_grid({"high": 70, "low": 48, "unit": "F"}, today=LEAP_DAY)
-
-    # The same two temperatures as the Celsius board, sent the other way round.
-    assert temperature_column(grid) == [" 70  21", " 48   9", "  F   C"]
-
-
-def test_the_unit_can_be_the_weather_entity_s_own_answer():
-    # What state_attr(..., 'temperature_unit') renders to, degree sign and all.
-    for said in ("°F", "f", " Fahrenheit "):
-        grid = rules.morning_grid({"high": 70, "unit": said}, today=LEAP_DAY)
-        assert temperature_column(grid)[0] == " 70  21", said
-
-    for said in ("°C", "c", "CELSIUS", "", None):
-        grid = rules.morning_grid({"high": 21, "unit": said}, today=LEAP_DAY)
-        assert temperature_column(grid)[0] == " 70  21", said
-
-
-def test_the_unit_answers_to_the_name_the_entity_gives_it():
-    grid = rules.morning_grid({"high": 70, "temperature_unit": "°F"}, today=LEAP_DAY)
-
-    assert temperature_column(grid)[0] == " 70  21"
-
-
-def test_something_that_is_not_a_unit_is_read_as_celsius_and_logged(caplog):
-    grid = rules.morning_grid({"high": 21, "unit": "kelvin"}, today=LEAP_DAY)
-
-    assert temperature_column(grid)[0] == " 70  21"
-    assert "not a unit" in caplog.text
-
-
-def test_a_fahrenheit_board_still_reads_a_freezing_morning():
-    grid = rules.morning_grid({"high": 10, "low": -20, "unit": "F"}, today=LEAP_DAY)
-
-    assert temperature_column(grid)[:2] == [" 10 -12", "-20 -29"]
+    assert condition_chips(grid, A_FORECAST) == chips_of(rules.CONDITIONS["rainy"])

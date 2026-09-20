@@ -104,5 +104,5 @@ def test_shipped_rules_all_register():
         "vestaboard_text",
         "vestaboard_eggs",
         "vestaboard_smoker",
-        "vestaboard_morning",
+        "vestaboard_forecast",
     ]
