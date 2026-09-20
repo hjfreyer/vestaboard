@@ -611,19 +611,20 @@ async def test_the_morning_board_goes_to_the_board(tmp_path):
     assert forecast_chips(grid) == chips_of(rules.FORECASTS["rainy"])
 
 
-def test_a_forecast_entry_can_be_handed_over_whole():
-    # What weather.get_forecasts gives for a day, passed straight through
-    # rather than picked apart key by key.
-    entry = {
-        "datetime": "2024-02-29T00:00:00-08:00",
-        "condition": "rainy",
-        "temperature": 21,
-        "templow": 9,
-        "precipitation_probability": 80,
-        "wind_speed": 11.2,
-    }
+#: What weather.get_forecasts gives for a day, whose three fields an automation
+#: copies into the event under the names they already have.
+AN_ENTRY = {
+    "datetime": "2024-02-29T00:00:00-08:00",
+    "condition": "rainy",
+    "temperature": 21,
+    "templow": 9,
+    "precipitation_probability": 80,
+    "wind_speed": 11.2,
+}
 
-    assert rules.morning_grid(entry) == rules.morning_grid(A_MORNING, today=LEAP_DAY)
+
+def test_a_forecast_entry_s_own_names_are_taken_too():
+    assert rules.morning_grid(AN_ENTRY) == rules.morning_grid(A_MORNING, today=LEAP_DAY)
 
 
 def test_our_own_names_win_over_the_forecast_s():
@@ -632,3 +633,40 @@ def test_our_own_names_win_over_the_forecast_s():
     )
 
     assert temperature_column(grid)[:2] == [" 86  30", " 68  20"]
+
+
+def test_a_board_whose_home_assistant_is_fahrenheit_says_so():
+    grid = rules.morning_grid({"high": 70, "low": 48, "unit": "F"}, today=LEAP_DAY)
+
+    # The same two temperatures as the Celsius board, sent the other way round.
+    assert temperature_column(grid) == [" 70  21", " 48   9", "  F   C"]
+
+
+def test_the_unit_can_be_the_weather_entity_s_own_answer():
+    # What state_attr(..., 'temperature_unit') renders to, degree sign and all.
+    for said in ("°F", "f", " Fahrenheit "):
+        grid = rules.morning_grid({"high": 70, "unit": said}, today=LEAP_DAY)
+        assert temperature_column(grid)[0] == " 70  21", said
+
+    for said in ("°C", "c", "CELSIUS", "", None):
+        grid = rules.morning_grid({"high": 21, "unit": said}, today=LEAP_DAY)
+        assert temperature_column(grid)[0] == " 70  21", said
+
+
+def test_the_unit_answers_to_the_name_the_entity_gives_it():
+    grid = rules.morning_grid({"high": 70, "temperature_unit": "°F"}, today=LEAP_DAY)
+
+    assert temperature_column(grid)[0] == " 70  21"
+
+
+def test_something_that_is_not_a_unit_is_read_as_celsius_and_logged(caplog):
+    grid = rules.morning_grid({"high": 21, "unit": "kelvin"}, today=LEAP_DAY)
+
+    assert temperature_column(grid)[0] == " 70  21"
+    assert "not a unit" in caplog.text
+
+
+def test_a_fahrenheit_board_still_reads_a_freezing_morning():
+    grid = rules.morning_grid({"high": 10, "low": -20, "unit": "F"}, today=LEAP_DAY)
+
+    assert temperature_column(grid)[:2] == [" 10 -12", "-20 -29"]
