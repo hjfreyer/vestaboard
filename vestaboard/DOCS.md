@@ -48,6 +48,7 @@ Use the **Fire event** action (under *Other actions* in the automation editor):
 | `vestaboard_text`     | Shows the `text` it is given, laid out by the board.         |
 | `vestaboard_eggs`     | Shows the egg numbers: `today`, `mtd` and `ytd`.             |
 | `vestaboard_smoker`   | Shows a cook: `food`, `air`, and a `duration` to count down. |
+| `vestaboard_morning`  | Shows the date, the day's forecast, and its high and low.    |
 
 A half-hourly rotation, then, is an automation and not a code change:
 
@@ -89,6 +90,47 @@ The names are the keys of `ARTWORKS` in `vestaboard_ha/art.py` -- `rainbow` and
 The gallery lists the lot with the art next to each name, under the category it
 is in. An unknown name, or a category with nothing in it, is logged as an error
 and leaves the board alone.
+
+## The morning
+
+`vestaboard_morning` puts the day up: the date down the left, the forecast
+drawn in the middle, and the day's high over its low on the right, each in
+Fahrenheit and in Celsius.
+
+```yaml
+alias: Vestaboard morning
+triggers:
+  - trigger: time
+    at: "06:45:00"
+actions:
+  - action: weather.get_forecasts
+    target:
+      entity_id: weather.home
+    data:
+      type: daily
+    response_variable: forecasts
+  - event: vestaboard_morning
+    event_data:
+      condition: "{{ forecasts['weather.home'].forecast[0].condition }}"
+      high: "{{ forecasts['weather.home'].forecast[0].temperature }}"
+      low: "{{ forecasts['weather.home'].forecast[0].templow }}"
+```
+
+The three keys are a daily forecast entry as Home Assistant hands it over.
+Temperatures are **Celsius** -- what a forecast gives on a metric Home
+Assistant -- and the Fahrenheit column is worked out from them; if yours is set
+to US customary units, set the weather entity's temperature unit to °C in its
+settings or convert in the template. Anything missing shows as `?` rather than
+costing the rest of the board.
+
+`condition` is any of the fifteen a weather entity reports -- `sunny`,
+`partlycloudy`, `cloudy`, `rainy`, `pouring`, `lightning`, `lightning-rainy`,
+`snowy`, `snowy-rainy`, `hail`, `fog`, `windy`, `windy-variant`, `clear-night`
+and `exceptional` -- and each is drawn in the four chips in the middle. One we
+do not know draws a `?`.
+
+The date is today in Home Assistant's timezone. Send a `date` (an ISO date, or
+a forecast's own `datetime`) to put a different day up.
 
 ## A message
 
