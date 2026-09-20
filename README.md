@@ -194,21 +194,26 @@ actions:
 `weather.get_forecasts` is how Home Assistant hands out a forecast, and its
 daily entries are exactly what the three keys above take: `condition`, and
 `temperature` and `templow` for the day's high and low. Those names work too,
-so an automation with nothing to add can hand the entry over whole:
+so the fields can be copied off an entry under either one.
+
+A forecast comes in whichever unit Home Assistant is set to, which is Celsius
+unless that is US customary -- so the temperatures are read as Celsius unless
+the automation says otherwise, and the weather entity knows its own answer:
 
 ```yaml
-actions:
-  - event: vestaboard_morning
-    event_data: "{{ forecasts['weather.home'].forecast[0] }}"
+    event_data:
+      unit: "{{ state_attr('weather.home', 'temperature_unit') }}"
+      condition: "{{ forecasts['weather.home'].forecast[0].condition }}"
+      high: "{{ forecasts['weather.home'].forecast[0].temperature }}"
+      low: "{{ forecasts['weather.home'].forecast[0].templow }}"
 ```
 
-Sent both ways, ours win. The temperatures come
-in whatever unit Home Assistant is configured for, so this takes **Celsius**
-and works the Fahrenheit out itself; on a Home Assistant set to US customary
-units, set the weather entity's temperature unit to °C in its settings, or
-convert in the template. A temperature that is missing or is not one shows as
-`?` in both columns, and three chips a temperature is enough for a `100`F
-afternoon and a `-20`C morning alike.
+That renders to `°C` or `°F`, both of which this takes, as it does a plain `C`
+or `F`; `temperature_unit` works as a key name as well as `unit`. Whichever
+unit comes in, both columns go up -- the other one is worked out here. A
+temperature that is missing or is not one shows as `?` in both columns, and
+three chips a temperature is enough for a `100`F afternoon and a `-20`C
+morning alike.
 
 `condition` is one of the fifteen a Home Assistant weather entity can report,
 and `rules.py` draws every one of them in the four chips in the middle:

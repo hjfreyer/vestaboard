@@ -533,6 +533,41 @@ def _date_lines(when: date) -> list[str]:
     ]
 
 
+#: What an automation can call the two units a weather entity reports in. The
+#: spellings with the degree sign are what the entity's own ``temperature_unit``
+#: attribute says, so that can be sent straight through.
+UNITS: dict[str, str] = {
+    "C": "C",
+    "°C": "C",
+    "CELSIUS": "C",
+    "F": "F",
+    "°F": "F",
+    "FAHRENHEIT": "F",
+}
+
+#: What the temperatures are in when the automation does not say. Home
+#: Assistant hands a forecast over in whatever unit it is set to, which is
+#: Celsius unless that is US customary.
+DEFAULT_UNIT = "C"
+
+
+def _unit(raw: Any) -> str:
+    """Which unit the automation's temperatures are in.
+
+    A weather entity is only ever set to one of the two, so anything else is an
+    automation sending something that is not a unit at all; that is worth
+    saying, and Celsius is the better guess to carry on with.
+    """
+    said = ("" if raw is None else str(raw)).strip().upper()
+    if not said:
+        return DEFAULT_UNIT
+    unit = UNITS.get(said)
+    if unit is None:
+        _LOGGER.warning("morning: %r is not a unit, reading it as Celsius", raw)
+        return DEFAULT_UNIT
+    return unit
+
+
 def _degrees(value: float) -> str:
     """One temperature in the chips it has, or ``?`` if it runs off the end.
 
@@ -546,18 +581,23 @@ def _degrees(value: float) -> str:
     return "?"
 
 
-def _temperatures(celsius: Any) -> str:
+def _temperatures(reading: Any, unit: str = DEFAULT_UNIT) -> str:
     """One row of the right-hand column: the same temperature in F and in C.
 
-    The automation sends Celsius, which is what Home Assistant hands it for a
-    forecast, and the Fahrenheit is ours to work out. A reading that is missing
-    or is not a number shows as ``?`` in both, rather than costing us the board.
+    The automation sends the reading in whichever unit its Home Assistant hands
+    forecasts out in, and the other column is ours to work out. A reading that
+    is missing or is not a number shows as ``?`` in both, rather than costing us
+    the board.
     """
-    number = _number(celsius, "morning")
+    number = _number(reading, "morning")
     if number is None:
         return f"{'?':>{TEMP_WIDTH}} {'?':>{TEMP_WIDTH}}"
-    fahrenheit = _degrees(number * 9 / 5 + 32)
-    return f"{fahrenheit:>{TEMP_WIDTH}} {_degrees(number):>{TEMP_WIDTH}}"
+
+    if unit == "F":
+        fahrenheit, celsius = number, (number - 32) * 5 / 9
+    else:
+        fahrenheit, celsius = number * 9 / 5 + 32, number
+    return f"{_degrees(fahrenheit):>{TEMP_WIDTH}} {_degrees(celsius):>{TEMP_WIDTH}}"
 
 
 def morning_grid(data: dict[str, Any], today: date | None = None) -> list[list[int]]:
@@ -591,9 +631,10 @@ def morning_grid(data: dict[str, Any], today: date | None = None) -> list[list[i
 
     # The high, the low, and which column is which, so the two numbers on a row
     # are one temperature said twice rather than two temperatures.
+    unit = _unit(_either(data, "unit", "temperature_unit"))
     rows = (
-        _temperatures(_either(data, "high", "temperature")),
-        _temperatures(_either(data, "low", "templow")),
+        _temperatures(_either(data, "high", "temperature"), unit),
+        _temperatures(_either(data, "low", "templow"), unit),
         f"{'F':>{TEMP_WIDTH}} {'C':>{TEMP_WIDTH}}",
     )
     for row, line in enumerate(rows):
@@ -607,8 +648,8 @@ def morning_grid(data: dict[str, Any], today: date | None = None) -> list[list[i
 async def morning(ctx: Context, data: dict[str, Any]) -> None:
     """Fire ``vestaboard_morning`` to put the day and its weather up.
 
-    It takes the day's forecast -- ``condition``, and ``high`` and ``low`` in
-    Celsius, which a daily forecast calls ``temperature`` and ``templow``::
+    It takes the day's forecast -- ``condition``, and ``high`` and ``low``,
+    which a daily forecast calls ``temperature`` and ``templow``::
 
         actions:
           - action: weather.get_forecasts
@@ -623,12 +664,21 @@ async def morning(ctx: Context, data: dict[str, Any]) -> None:
               high: "{{ forecasts['weather.home'].forecast[0].temperature }}"
               low: "{{ forecasts['weather.home'].forecast[0].templow }}"
 
-    Those are the names a daily forecast entry already uses, so an automation
-    that has nothing to add can hand the entry over whole instead::
+    Those are the names a daily forecast entry already uses, so the three
+    fields can be copied off one under either name.
+
+    The temperatures are read as Celsius unless the automation says otherwise,
+    since that is what a forecast comes in unless Home Assistant is set to US
+    customary units. A Home Assistant that is says so, and the weather entity
+    knows its own answer::
 
         actions:
           - event: vestaboard_morning
-            event_data: "{{ forecasts['weather.home'].forecast[0] }}"
+            event_data:
+              unit: "{{ state_attr('weather.home', 'temperature_unit') }}"
+              ...
+
+    Whichever comes in, both columns go up: the other one is worked out here.
 
     The board is the date down the left, the forecast drawn in the middle, and
     the high over the low on the right, each in Fahrenheit and Celsius. The

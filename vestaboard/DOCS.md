@@ -117,10 +117,20 @@ actions:
 ```
 
 The three keys are a daily forecast entry as Home Assistant hands it over.
-Temperatures are **Celsius** -- what a forecast gives on a metric Home
-Assistant -- and the Fahrenheit column is worked out from them; if yours is set
-to US customary units, set the weather entity's temperature unit to °C in its
-settings or convert in the template. Anything missing shows as `?` rather than
+
+Temperatures are read as **Celsius**, which is what a forecast gives unless
+your Home Assistant is set to US customary units. If it is, add a `unit` and
+both columns still come out right -- the entity knows which it means:
+
+```yaml
+    event_data:
+      unit: "{{ state_attr('weather.home', 'temperature_unit') }}"
+      condition: "{{ forecasts['weather.home'].forecast[0].condition }}"
+      high: "{{ forecasts['weather.home'].forecast[0].temperature }}"
+      low: "{{ forecasts['weather.home'].forecast[0].templow }}"
+```
+
+A plain `C` or `F` works too. Anything missing shows as `?` rather than
 costing the rest of the board.
 
 `condition` is any of the fifteen a weather entity reports -- `sunny`,
