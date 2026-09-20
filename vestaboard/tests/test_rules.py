@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 
 from vestaboard_ha import art, charcodes, rules
@@ -467,3 +469,166 @@ def test_a_label_leaving_no_room_for_the_smoke_is_an_error(monkeypatch):
 
     with pytest.raises(ValueError, match="no room for the smoke"):
         rules.smoker_grid({"food": 135})
+
+
+def date_column(grid):
+    """The date down the left, as the text the board will show."""
+    return [
+        "".join(charcodes.CODE_TO_CHAR[code] for code in row[: rules.ICON_COL]).strip()
+        for row in grid
+    ]
+
+
+def temperature_column(grid):
+    """The temperatures on the right, as the text the board will show."""
+    return [
+        "".join(charcodes.CODE_TO_CHAR[code] for code in row[rules.TEMP_COL :])
+        for row in grid
+    ]
+
+
+def forecast_chips(grid):
+    """The middle of the board: the chips the forecast was drawn as."""
+    return [row[rules.ICON_COL : rules.ICON_COL + rules.ICON_COLS] for row in grid]
+
+
+A_MORNING = {"condition": "rainy", "high": 21, "low": 9}
+LEAP_DAY = date(2024, 2, 29)
+
+
+def test_every_forecast_is_written_out_to_the_chips_it_fills():
+    for condition, icon in (*rules.FORECASTS.items(), ("?", rules.UNKNOWN_FORECAST)):
+        chips = art.rows(icon)  # raises if the forecast does not parse
+
+        assert len(chips) == charcodes.ROWS, condition
+        # Every row to the last chip, so no forecast leans on being padded out.
+        assert [len(row) for row in chips] == [rules.ICON_COLS] * charcodes.ROWS, (
+            condition
+        )
+
+
+def test_every_home_assistant_condition_has_a_forecast():
+    # The fifteen a weather entity can report; anything else is not a condition
+    # Home Assistant has, whichever integration the forecast came from.
+    assert set(rules.FORECASTS) == {
+        "clear-night",
+        "cloudy",
+        "exceptional",
+        "fog",
+        "hail",
+        "lightning",
+        "lightning-rainy",
+        "partlycloudy",
+        "pouring",
+        "rainy",
+        "snowy",
+        "snowy-rainy",
+        "sunny",
+        "windy",
+        "windy-variant",
+    }
+
+
+def test_the_morning_board_is_the_date_the_forecast_and_the_temperatures():
+    grid = rules.morning_grid(A_MORNING, today=LEAP_DAY)
+
+    assert date_column(grid) == ["THU", "FEB", "29"]
+    assert forecast_chips(grid) == chips_of(rules.FORECASTS["rainy"])
+    # The high over the low, each said in Fahrenheit and then in Celsius.
+    assert temperature_column(grid) == [" 70  21", " 48   9", "  F   C"]
+
+
+def test_the_automation_sends_celsius_and_fahrenheit_is_ours_to_work_out():
+    grid = rules.morning_grid({"high": 37.6, "low": -12.4}, today=LEAP_DAY)
+
+    # Rounded, not truncated: 37.6C is 99.7F, which is a 100F day, and the
+    # -12.4C morning is 9.7F rather than the 9F that dropping the decimal gives.
+    assert temperature_column(grid)[:2] == ["100  38", " 10 -12"]
+
+
+def test_a_temperature_that_is_missing_or_is_not_one_is_a_question_mark(caplog):
+    grid = rules.morning_grid({"condition": "sunny", "low": "unavailable"})
+
+    assert temperature_column(grid)[:2] == ["  ?   ?", "  ?   ?"]
+    assert "morning" in caplog.text
+
+
+def test_a_condition_we_cannot_draw_says_so_rather_than_guessing(caplog):
+    grid = rules.morning_grid({"condition": "meteor-shower"}, today=LEAP_DAY)
+
+    assert forecast_chips(grid) == chips_of(rules.UNKNOWN_FORECAST)
+    assert "meteor-shower" in caplog.text
+    # The rest of the board is still the board.
+    assert date_column(grid) == ["THU", "FEB", "29"]
+
+
+def test_a_condition_is_taken_however_the_automation_spelled_it():
+    grid = rules.morning_grid({"condition": " Partlycloudy\n"}, today=LEAP_DAY)
+
+    assert forecast_chips(grid) == chips_of(rules.FORECASTS["partlycloudy"])
+
+
+def test_the_automation_can_say_which_day_it_is():
+    # What a template or a forecast's own datetime renders to, both of which an
+    # automation knows the timezone of better than we do.
+    for sent in ("2024-02-29", "2024-02-29T07:00:00-08:00"):
+        assert date_column(rules.morning_grid({"date": sent})) == ["THU", "FEB", "29"]
+
+
+def test_a_date_that_is_not_one_falls_back_to_today(caplog):
+    grid = rules.morning_grid({"date": "tomorrow"}, today=LEAP_DAY)
+
+    assert date_column(grid) == ["THU", "FEB", "29"]
+    assert "not a date" in caplog.text
+
+
+def test_no_date_at_all_is_the_day_the_board_went_up():
+    grid = rules.morning_grid({"condition": "sunny"})
+
+    assert date_column(grid) == [
+        date.today().strftime("%a").upper(),
+        date.today().strftime("%b").upper(),
+        str(date.today().day),
+    ]
+
+
+def test_a_forecast_that_is_not_the_size_of_its_chips_is_an_error(monkeypatch):
+    monkeypatch.setitem(rules.FORECASTS, "sunny", "⬜⬜⬜⬜⬜\n⬜⬜⬜⬜⬜\n⬜⬜⬜⬜⬜")
+
+    with pytest.raises(ValueError, match="a forecast is 3 rows of 4 chips"):
+        rules.morning_grid({"condition": "sunny"})
+
+
+@pytest.mark.asyncio
+async def test_the_morning_board_goes_to_the_board(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    await rules.morning(ctx, A_MORNING)
+
+    [grid] = ctx.board.grids
+    assert len(grid) == charcodes.ROWS
+    assert all(len(row) == charcodes.COLS for row in grid)
+    assert forecast_chips(grid) == chips_of(rules.FORECASTS["rainy"])
+
+
+def test_a_forecast_entry_can_be_handed_over_whole():
+    # What weather.get_forecasts gives for a day, passed straight through
+    # rather than picked apart key by key.
+    entry = {
+        "datetime": "2024-02-29T00:00:00-08:00",
+        "condition": "rainy",
+        "temperature": 21,
+        "templow": 9,
+        "precipitation_probability": 80,
+        "wind_speed": 11.2,
+    }
+
+    assert rules.morning_grid(entry) == rules.morning_grid(A_MORNING, today=LEAP_DAY)
+
+
+def test_our_own_names_win_over_the_forecast_s():
+    grid = rules.morning_grid(
+        {"high": 30, "temperature": 21, "low": 20, "templow": 9}, today=LEAP_DAY
+    )
+
+    assert temperature_column(grid)[:2] == [" 86  30", " 68  20"]

@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import math
 import random
+from datetime import date, datetime
 from typing import Any
 
 from . import art, charcodes
@@ -383,3 +384,251 @@ async def smoker(ctx: Context, data: dict[str, Any]) -> None:
     one puts the art up; this only lays the numbers out.
     """
     await ctx.board.send_characters(smoker_grid(data))
+
+#: Home Assistant's weather entities all report one of these fifteen
+#: conditions, whichever service the forecast came from, so this is the whole
+#: list there is to draw. Each is the ICON_COLS chips that go in the middle of
+#: the morning board, written out to the last one, in the squares art.py uses.
+#: Some of what falls out of a cloud cannot be told apart at four chips across
+#: -- hail from sleet, a gust from a variant gust -- and those are drawn alike
+#: on purpose; the board is saying take a coat, not reading out the METAR.
+FORECASTS: dict[str, str] = {
+    "sunny": """
+⬛🟨🟨⬛
+🟨🟨🟨🟨
+⬛🟨🟨⬛
+""",
+    "clear-night": """
+⬛⬛🟨🟨
+⬜⬛🟨🟨
+⬛⬛⬛⬜
+""",
+    "partlycloudy": """
+🟨🟨⬛⬛
+🟨⬜⬜⬜
+⬛⬜⬜⬜
+""",
+    "cloudy": """
+⬛⬜⬜⬛
+⬜⬜⬜⬜
+⬛⬛⬛⬛
+""",
+    "fog": """
+⬜⬜⬜⬜
+⬛⬛⬛⬛
+⬜⬜⬜⬜
+""",
+    "windy": """
+⬜⬜⬜⬛
+⬛⬛⬛⬛
+⬛⬜⬜⬜
+""",
+    "windy-variant": """
+⬜⬜⬜⬛
+⬛⬛⬛⬛
+⬛⬜⬜⬜
+""",
+    "rainy": """
+⬛⬜⬜⬛
+⬜⬜⬜⬜
+🟦⬛🟦⬛
+""",
+    "pouring": """
+⬛⬜⬜⬛
+⬜⬜⬜⬜
+🟦🟦🟦🟦
+""",
+    "lightning": """
+⬛⬜⬜⬛
+⬜⬜🟨⬜
+⬛🟨⬛⬛
+""",
+    "lightning-rainy": """
+⬛⬜⬜⬛
+⬜⬜🟨⬜
+🟦🟨⬛🟦
+""",
+    "snowy": """
+⬛⬜⬜⬛
+⬜⬜⬜⬜
+ +⬛ +⬛
+""",
+    "snowy-rainy": """
+⬛⬜⬜⬛
+⬜⬜⬜⬜
+🟦⬛ +⬛
+""",
+    "hail": """
+⬛⬜⬜⬛
+⬜⬜⬜⬜
+ O⬛ O⬛
+""",
+    "exceptional": """
+⬛🟥🟥⬛
+⬛🟥🟥⬛
+⬛🟥🟥⬛
+""",
+}
+
+#: What goes in the middle when the automation sent a condition we have never
+#: heard of, or none at all. A board that says it does not know beats a board
+#: that quietly draws sunshine.
+UNKNOWN_FORECAST = """
+⬛⬛⬛⬛
+⬛ ?⬛⬛
+⬛⬛⬛⬛
+"""
+
+#: The three columns of the morning board: the date on the left, the forecast
+#: in the middle, and the temperatures against the right edge. The forecast is
+#: four chips wide and every temperature three, which holds a 100F afternoon
+#: and a -20C morning alike.
+DATE_COL = 0
+ICON_COL = 4
+ICON_COLS = 4
+TEMP_COL = 8
+TEMP_WIDTH = 3
+
+
+def _either(data: dict[str, Any], *keys: str) -> Any:
+    """The first of these keys the automation said anything under.
+
+    Each thing the morning board wants has two names: ours, and the one a
+    Home Assistant forecast entry already calls it. That is what lets an
+    automation hand the entry over whole rather than picking it apart.
+    """
+    for key in keys:
+        value = data.get(key)
+        if value is not None and str(value).strip():
+            return value
+    return None
+
+
+def _forecast_date(raw: Any, today: date | None = None) -> date:
+    """The day the board is for: what the automation sent, or our own clock.
+
+    A date sent as ``{{ now().date() }}`` or a forecast's own ``datetime`` is
+    the automation being authoritative about the timezone, which it knows
+    better than we do; with nothing sent we use the clock in the container,
+    which Supervisor sets to the same timezone as Home Assistant.
+    """
+    if raw is not None and str(raw).strip():
+        try:
+            return datetime.fromisoformat(str(raw).strip()).date()
+        except ValueError:
+            _LOGGER.warning("morning: %r is not a date, using today", raw)
+    return today or date.today()
+
+
+def _date_lines(when: date) -> list[str]:
+    """The date down the left: the weekday, the month, and the day of it."""
+    return [
+        when.strftime("%a").upper(),
+        when.strftime("%b").upper(),
+        str(when.day),
+    ]
+
+
+def _degrees(value: float) -> str:
+    """One temperature in the chips it has, or ``?`` if it runs off the end.
+
+    Nothing a forecast says is four chips wide, so a value that is means the
+    automation sent something that is not a temperature.
+    """
+    text = str(round(value))
+    if len(text) <= TEMP_WIDTH:
+        return text
+    _LOGGER.warning("morning: %s needs more than %d chips", text, TEMP_WIDTH)
+    return "?"
+
+
+def _temperatures(celsius: Any) -> str:
+    """One row of the right-hand column: the same temperature in F and in C.
+
+    The automation sends Celsius, which is what Home Assistant hands it for a
+    forecast, and the Fahrenheit is ours to work out. A reading that is missing
+    or is not a number shows as ``?`` in both, rather than costing us the board.
+    """
+    number = _number(celsius, "morning")
+    if number is None:
+        return f"{'?':>{TEMP_WIDTH}} {'?':>{TEMP_WIDTH}}"
+    fahrenheit = _degrees(number * 9 / 5 + 32)
+    return f"{fahrenheit:>{TEMP_WIDTH}} {_degrees(number):>{TEMP_WIDTH}}"
+
+
+def morning_grid(data: dict[str, Any], today: date | None = None) -> list[list[int]]:
+    """The morning board: the date, the day's forecast, and its temperatures.
+
+    ``today`` is only there for the tests; the rule lets ``_forecast_date``
+    work out the day.
+    """
+    grid = charcodes.blank_grid()
+
+    when = _forecast_date(_either(data, "date", "datetime"), today)
+    for row, line in enumerate(_date_lines(when)):
+        for col, char in enumerate(line):
+            grid[row][DATE_COL + col] = charcodes.encode_char(char)
+
+    condition = str(data.get("condition", "")).strip().lower()
+    icon = FORECASTS.get(condition)
+    if icon is None:
+        _LOGGER.warning("morning: %r is not a forecast I can draw", condition)
+        icon = UNKNOWN_FORECAST
+
+    chips = art.rows(icon)
+    if (len(chips), len(chips[0])) != (charcodes.ROWS, ICON_COLS):
+        raise ValueError(
+            f"a forecast is {charcodes.ROWS} rows of {ICON_COLS} chips, not "
+            f"{len(chips)} of {len(chips[0])}"
+        )
+    for row, line in enumerate(chips):
+        for col, chip in enumerate(line):
+            grid[row][ICON_COL + col] = art.encode_chip(chip)
+
+    # The high, the low, and which column is which, so the two numbers on a row
+    # are one temperature said twice rather than two temperatures.
+    rows = (
+        _temperatures(_either(data, "high", "temperature")),
+        _temperatures(_either(data, "low", "templow")),
+        f"{'F':>{TEMP_WIDTH}} {'C':>{TEMP_WIDTH}}",
+    )
+    for row, line in enumerate(rows):
+        for col, char in enumerate(line):
+            grid[row][TEMP_COL + col] = charcodes.encode_char(char)
+
+    return grid
+
+
+@on_action("morning")
+async def morning(ctx: Context, data: dict[str, Any]) -> None:
+    """Fire ``vestaboard_morning`` to put the day and its weather up.
+
+    It takes the day's forecast -- ``condition``, and ``high`` and ``low`` in
+    Celsius, which a daily forecast calls ``temperature`` and ``templow``::
+
+        actions:
+          - action: weather.get_forecasts
+            target:
+              entity_id: weather.home
+            data:
+              type: daily
+            response_variable: forecasts
+          - event: vestaboard_morning
+            event_data:
+              condition: "{{ forecasts['weather.home'].forecast[0].condition }}"
+              high: "{{ forecasts['weather.home'].forecast[0].temperature }}"
+              low: "{{ forecasts['weather.home'].forecast[0].templow }}"
+
+    Those are the names a daily forecast entry already uses, so an automation
+    that has nothing to add can hand the entry over whole instead::
+
+        actions:
+          - event: vestaboard_morning
+            event_data: "{{ forecasts['weather.home'].forecast[0] }}"
+
+    The board is the date down the left, the forecast drawn in the middle, and
+    the high over the low on the right, each in Fahrenheit and Celsius. The
+    date is ours unless the automation sends one -- as ``date``, or as the
+    ``datetime`` a forecast entry carries.
+    """
+    await ctx.board.send_characters(morning_grid(data))

@@ -162,6 +162,70 @@ is missing or is not a number shows as `?` rather than costing the board the
 others, and a cook past ten hours takes the chip its `12:06` needs from every
 row at once, so the readings stay in a column.
 
+`vestaboard_morning` is the third: the date down the left, the day's forecast
+drawn in the middle, and its high over its low on the right, each said in
+Fahrenheit and in Celsius.
+
+```yaml
+alias: Vestaboard morning
+triggers:
+  - trigger: time
+    at: "06:45:00"
+actions:
+  - action: weather.get_forecasts
+    target:
+      entity_id: weather.home
+    data:
+      type: daily
+    response_variable: forecasts
+  - event: vestaboard_morning
+    event_data:
+      condition: "{{ forecasts['weather.home'].forecast[0].condition }}"
+      high: "{{ forecasts['weather.home'].forecast[0].temperature }}"
+      low: "{{ forecasts['weather.home'].forecast[0].templow }}"
+```
+
+```
+ S U N⬛⬛⬜⬜⬛⬛ 7 0⬛⬛ 2 1
+ S E P⬛⬜⬜⬜⬜⬛ 4 8⬛⬛⬛ 9
+ 2 0⬛⬛🟦⬛🟦⬛⬛⬛ F⬛⬛⬛ C
+```
+
+`weather.get_forecasts` is how Home Assistant hands out a forecast, and its
+daily entries are exactly what the three keys above take: `condition`, and
+`temperature` and `templow` for the day's high and low. Those names work too,
+so an automation with nothing to add can hand the entry over whole:
+
+```yaml
+actions:
+  - event: vestaboard_morning
+    event_data: "{{ forecasts['weather.home'].forecast[0] }}"
+```
+
+Sent both ways, ours win. The temperatures come
+in whatever unit Home Assistant is configured for, so this takes **Celsius**
+and works the Fahrenheit out itself; on a Home Assistant set to US customary
+units, set the weather entity's temperature unit to °C in its settings, or
+convert in the template. A temperature that is missing or is not one shows as
+`?` in both columns, and three chips a temperature is enough for a `100`F
+afternoon and a `-20`C morning alike.
+
+`condition` is one of the fifteen a Home Assistant weather entity can report,
+and `rules.py` draws every one of them in the four chips in the middle:
+`clear-night`, `cloudy`, `exceptional`, `fog`, `hail`, `lightning`,
+`lightning-rainy`, `partlycloudy`, `pouring`, `rainy`, `snowy`, `snowy-rainy`,
+`sunny`, `windy` and `windy-variant`. They are the `FORECASTS` in `rules.py`,
+written out in the same squares as `art.py` -- a cloud over what is falling out
+of it, with `+` for snow and `O` for hail, since white chips under a white
+cloud are one white shape. What cannot be told apart at four chips across --
+hail from sleet, a gust from a variant gust -- is drawn alike on purpose. A
+condition we do not know, or none at all, draws a `?` and says so in the log
+rather than putting up sunshine.
+
+The date is the app's own, which is Home Assistant's timezone -- Supervisor
+sets the container's clock to it. Send a `date` in the `event_data` (an ISO
+date, or a forecast's own `datetime`) to say otherwise.
+
 `ctx.board` sends to the board, `ctx.hass` reads state and calls services, and
 `ctx.art` is the art library: `ctx.art.grid("rainbow")` for a named piece,
 `ctx.art.grid()` for a random one from the `art` category, and
