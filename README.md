@@ -188,7 +188,7 @@ actions:
 ```
  S U N⬛⬛⬜⬜⬛⬛ 7 0⬛⬛ 2 1
  S E P⬛⬜⬜⬜⬜⬛ 4 8⬛⬛⬛ 9
- 2 0⬛⬛🟦⬛🟦⬛⬛⬛ F⬛⬛⬛ C
+ 2 0⬛⬛ :⬛ :⬛⬛⬛ F⬛⬛⬛ C
 ```
 
 `weather.get_forecasts` is how Home Assistant hands out a forecast, and its
@@ -215,12 +215,13 @@ and `rules.py` draws every one of them in the four chips in the middle:
 `clear-night`, `cloudy`, `exceptional`, `fog`, `hail`, `lightning`,
 `lightning-rainy`, `partlycloudy`, `pouring`, `rainy`, `snowy`, `snowy-rainy`,
 `sunny`, `windy` and `windy-variant`. They are the `FORECASTS` in `rules.py`,
-written out in the same squares as `art.py` -- a cloud over what is falling out
-of it, with `+` for snow and `O` for hail, since white chips under a white
-cloud are one white shape. What cannot be told apart at four chips across --
-hail from sleet, a gust from a variant gust -- is drawn alike on purpose. A
-condition we do not know, or none at all, draws a `?` and says so in the log
-rather than putting up sunshine.
+written out in the same squares as `art.py`: the same pyramid of a cloud
+wherever a cloud appears, with what falls out of it written as characters --
+`:` for rain, `/` for a downpour, `#` for snow, `O` for hail -- since a white
+chip under a white cloud reads as more cloud rather than as falling. What four
+chips across cannot tell apart -- a gust from a variant gust, a clear day from
+a clear night -- is drawn alike on purpose. A condition we do not know, or none
+at all, draws a `?` and says so in the log rather than putting up sunshine.
 
 The date is the app's own, which is Home Assistant's timezone -- Supervisor
 sets the container's clock to it. Send a `date` in the `event_data` (an ISO

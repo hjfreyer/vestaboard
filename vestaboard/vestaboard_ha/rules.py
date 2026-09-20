@@ -389,24 +389,28 @@ async def smoker(ctx: Context, data: dict[str, Any]) -> None:
 #: conditions, whichever service the forecast came from, so this is the whole
 #: list there is to draw. Each is the ICON_COLS chips that go in the middle of
 #: the morning board, written out to the last one, in the squares art.py uses.
-#: Some of what falls out of a cloud cannot be told apart at four chips across
-#: -- hail from sleet, a gust from a variant gust -- and those are drawn alike
-#: on purpose; the board is saying take a coat, not reading out the METAR.
+#: A cloud is the same pyramid wherever it appears, and what falls out of it is
+#: written as characters -- rain as colons, a downpour as slashes, snow as
+#: hashes, hail as its stones -- which read as falling where a chip under a
+#: cloud reads as more cloud. Some of it cannot be told apart at four chips
+#: across -- a gust from a variant gust, a clear day from a clear night -- and
+#: those are drawn alike on purpose; the board is saying take a coat, not
+#: reading out the METAR.
 FORECASTS: dict[str, str] = {
     "sunny": """
-⬛🟨🟨⬛
 🟨🟨🟨🟨
-⬛🟨🟨⬛
+🟨🟨🟨🟨
+🟨🟨🟨🟨
 """,
     "clear-night": """
-⬛⬛🟨🟨
-⬜⬛🟨🟨
-⬛⬛⬛⬜
+🟨🟨🟨🟨
+🟨🟨🟨🟨
+🟨🟨🟨🟨
 """,
     "partlycloudy": """
 🟨🟨⬛⬛
-🟨⬜⬜⬜
-⬛⬜⬜⬜
+🟨⬜⬜⬛
+⬜⬜⬜⬜
 """,
     "cloudy": """
 ⬛⬜⬜⬛
@@ -431,12 +435,12 @@ FORECASTS: dict[str, str] = {
     "rainy": """
 ⬛⬜⬜⬛
 ⬜⬜⬜⬜
-🟦⬛🟦⬛
+ :⬛ :⬛
 """,
     "pouring": """
 ⬛⬜⬜⬛
 ⬜⬜⬜⬜
-🟦🟦🟦🟦
+ / / / /
 """,
     "lightning": """
 ⬛⬜⬜⬛
@@ -446,17 +450,17 @@ FORECASTS: dict[str, str] = {
     "lightning-rainy": """
 ⬛⬜⬜⬛
 ⬜⬜🟨⬜
-🟦🟨⬛🟦
+ :🟨⬛ :
 """,
     "snowy": """
 ⬛⬜⬜⬛
 ⬜⬜⬜⬜
- +⬛ +⬛
+ #⬛ #⬛
 """,
     "snowy-rainy": """
 ⬛⬜⬜⬛
 ⬜⬜⬜⬜
-🟦⬛ +⬛
+ :⬛ #⬛
 """,
     "hail": """
 ⬛⬜⬜⬛
