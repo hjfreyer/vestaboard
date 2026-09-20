@@ -408,7 +408,7 @@ FORECASTS: dict[str, str] = {
 🟨🟨🟨🟨
 """,
     "partlycloudy": """
-🟨🟨⬛⬛
+🟨🟨🟨⬛
 🟨⬜⬜⬛
 ⬜⬜⬜⬜
 """,
