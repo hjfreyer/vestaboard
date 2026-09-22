@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import math
 import random
+import unicodedata
 from datetime import date, datetime
 from typing import Any
 
@@ -854,3 +855,186 @@ async def fetch_holidays(ctx: Context, data: dict[str, Any]) -> None:
         ", ".join(holiday.name for holiday in listing.holidays)
         or "no holiday at all",
     )
+
+
+#: The words a holiday uses to say how far its claim reaches. They are the
+#: first thing to go when a name will not fit: written the short way where
+#: there is one, and dropped after that. A board on a kitchen wall is not in
+#: any doubt about which world it is on.
+SCOPE_WORDS = ("NATIONAL", "INTERNATIONAL", "WORLD")
+
+#: How to write one of them shorter. WORLD is already as short as it goes, so
+#: it has no entry here and survives to the step that drops it instead.
+SCOPE_SHORT = {"NATIONAL": "NAT'L", "INTERNATIONAL": "INT'L"}
+
+#: What stands in for the words that did not make it. The board has no single
+#: flap for one, so it is three full stops and takes three chips.
+ELLIPSIS = "..."
+
+#: Spellings the board has no flap for, and what to write instead. Checkiday
+#: writes for a web page -- curly quotes, en dashes, the odd accent -- and the
+#: board has none of that.
+SUBSTITUTIONS = str.maketrans(
+    {
+        "‘": "'",
+        "’": "'",
+        "‛": "'",
+        "`": "'",
+        "“": '"',
+        "”": '"',
+        "–": "-",
+        "—": "-",
+        "―": "-",
+        "…": ELLIPSIS,
+    }
+)
+
+
+def sayable(name: str) -> str:
+    """A holiday's name in the letters this board actually has.
+
+    The plain spelling of anything fancy, accents taken off the letters they
+    sit on, and then a space for whatever is still unsayable -- one strange
+    character in a name should cost that character and not the whole board.
+    """
+    said = name.translate(SUBSTITUTIONS)
+    # An accent comes apart into a letter and a mark of its own, and it is the
+    # mark that goes: CAFÉ is a word the board can say, once the É is an E.
+    said = unicodedata.normalize("NFKD", said)
+    said = "".join(mark for mark in said if not unicodedata.combining(mark))
+    return "".join(
+        char if char in charcodes.CHAR_TO_CODE else " " for char in said.upper()
+    )
+
+
+def _lines(words: list[str]) -> list[str] | None:
+    """The words wrapped onto the board, or None if they will not go.
+
+    At the spaces and nowhere else: the board has no hyphen worth the name, and
+    a word broken over two rows reads as two words.
+    """
+    lines: list[str] = []
+    line = ""
+    for word in words:
+        if len(word) > charcodes.COLS:
+            return None
+        nxt = f"{line} {word}" if line else word
+        if len(nxt) <= charcodes.COLS:
+            line = nxt
+            continue
+        lines.append(line)
+        line = word
+        if len(lines) == charcodes.ROWS:
+            # A row's worth of words still in hand and no row left to put it on.
+            return None
+    if line:
+        lines.append(line)
+    return lines or None
+
+
+def _shortened(words: list[str]) -> list[str]:
+    """The scope written the short way, where there is a short way."""
+    return [SCOPE_SHORT.get(word, word) for word in words]
+
+
+def _unscoped(words: list[str]) -> list[str]:
+    """The scope gone altogether.
+
+    A holiday whose name is nothing but its scope keeps it, since a board with
+    nothing on it is worse than one that overreaches.
+    """
+    return [word for word in words if word not in SCOPE_WORDS] or words
+
+
+def _ellipsized(words: list[str]) -> list[str]:
+    """As many words as go on, and dots for the ones that did not."""
+    for count in range(len(words) - 1, 0, -1):
+        lines = _lines([*words[: count - 1], words[count - 1] + ELLIPSIS])
+        if lines is not None:
+            return lines
+
+    # One word, and even that is too long for a row: cut the word itself.
+    room = charcodes.COLS - len(ELLIPSIS)
+    return [words[0][:room] + ELLIPSIS]
+
+
+def holiday_lines(name: str) -> list[str]:
+    """One holiday's name laid out on the board, shortened until it goes on.
+
+    Four goes at it, each giving up a little more than the last: the name as it
+    is, then the scope written short, then the scope dropped, and then dots for
+    whatever is left over. Most of a long holiday's name is its scope, so it is
+    rare to get past the third.
+
+    The scope is dropped from the name as it was written rather than from the
+    shortened one, since ``NAT'L`` is no longer the word being looked for.
+    """
+    words = sayable(name).split()
+    if not words:
+        raise ValueError(f"{name!r} has nothing in it the board can show")
+
+    for attempt in (words, _shortened(words), _unscoped(words)):
+        lines = _lines(attempt)
+        if lines is not None:
+            return lines
+    return _ellipsized(_unscoped(words))
+
+
+def _down_the_middle(lines: list[str]) -> list[str]:
+    """The lines in the middle of the board rather than up against the top.
+
+    ``encode_lines`` centers a line across its row but starts at the first one,
+    so a one-line holiday would otherwise sit on the top row with two empty
+    rows under it.
+    """
+    return ["" for _ in range((charcodes.ROWS - len(lines)) // 2)] + lines
+
+
+@on_action("show_holiday")
+async def show_holiday(ctx: Context, data: dict[str, Any]) -> None:
+    """Fire ``vestaboard_show_holiday`` to put one of today's holidays up.
+
+    It reads what ``vestaboard_fetch_holidays`` wrote down, picks one of the
+    day's holidays at random, and puts its name on the board::
+
+        alias: Vestaboard holiday
+        triggers:
+          - trigger: time_pattern
+            hours: "/2"
+        actions:
+          - event: vestaboard_show_holiday
+
+    Nothing is asked of Checkiday here, so this is free to fire as often as you
+    like -- it only ever reads the day the fetch already paid for. A day that
+    has not been fetched, or that turned out to hold no holidays, is logged and
+    leaves the board showing whatever it had.
+
+    The day is today unless the automation sends a ``date``, which is mostly a
+    way to look at a day that has already been.
+    """
+    day = _date_asked_for(_either(data, "date", "datetime"), rule="holidays")
+
+    # A name with nothing sayable in it should cost us that holiday rather
+    # than the turn: the board is better off with one of the others on it.
+    showable = []
+    for holiday in ctx.holidays.holidays_for(day):
+        if sayable(holiday.name).split():
+            showable.append(holiday)
+        else:
+            _LOGGER.warning(
+                "holidays: leaving %r out, the board cannot say any of it",
+                holiday.name,
+            )
+
+    if not showable:
+        _LOGGER.warning(
+            "holidays: nothing written down for %s that the board can show; "
+            "has vestaboard_fetch_holidays run?",
+            day,
+        )
+        return
+
+    holiday = random.choice(showable)
+    lines = holiday_lines(holiday.name)
+    _LOGGER.info("holidays: showing %r as %s", holiday.name, lines)
+    await ctx.board.send_lines(_down_the_middle(lines))

@@ -13,12 +13,16 @@ class FakeBoard:
     def __init__(self):
         self.sent = []
         self.grids = []
+        self.lines = []
 
     async def send_text(self, text):
         self.sent.append(text)
 
     async def send_characters(self, grid):
         self.grids.append(grid)
+
+    async def send_lines(self, lines, *, center=True):
+        self.lines.append(list(lines))
 
 
 class FakeCheckiday:
@@ -907,3 +911,181 @@ def test_an_automation_s_yes_survives_being_templated_to_a_string():
     assert not rules._flag(False)
     assert not rules._flag("")
     assert not rules._flag(None)
+
+
+#: Real names, chosen because between them they use every rung of the ladder.
+A_YEAR_OF_HOLIDAYS = (
+    "National Chicken Month",
+    "World Turtle Day",
+    "International Talk Like a Pirate Day",
+    "National Grandparents' Day",
+    "International Day for the Preservation of the Ozone Layer",
+    "International Day for the Total Elimination of Nuclear Weapons",
+    "International Day of Persons with Disabilities",
+    "National Alcohol and Drug Addiction Recovery Month",
+    "Fresh Spinach Day",
+    "Bring Your Own Cup Day",
+)
+
+
+def test_the_board_only_gets_letters_it_has_flaps_for():
+    assert rules.sayable("Grandparents’ Day") == "GRANDPARENTS' DAY"
+    assert rules.sayable("Café au Lait Day") == "CAFE AU LAIT DAY"
+    assert rules.sayable("Rock–Paper Day") == "ROCK-PAPER DAY"
+    # A character with no flap at all costs itself and nothing else.
+    assert rules.sayable("Pi π Day") == "PI   DAY"
+
+
+def test_a_name_that_fits_is_left_alone():
+    assert rules.holiday_lines("National Chicken Month") == [
+        "NATIONAL",
+        "CHICKEN MONTH",
+    ]
+    assert rules.holiday_lines("Fresh Spinach Day") == ["FRESH SPINACH", "DAY"]
+
+
+def test_a_name_that_does_not_fit_gives_up_its_scope_a_bit_at_a_time():
+    # Long enough that the name as written will not go on, but short enough
+    # that writing INTERNATIONAL as INT'L is all it takes.
+    name = "International Day of Persons with Disabilities"
+
+    assert rules._lines(rules.sayable(name).split()) is None
+    assert rules.holiday_lines(name) == [
+        "INT'L DAY OF",
+        "PERSONS WITH",
+        "DISABILITIES",
+    ]
+
+
+def test_a_name_that_still_does_not_fit_loses_its_scope_altogether():
+    lines = rules.holiday_lines(
+        "International Day for the Preservation of the Ozone Layer"
+    )
+
+    assert lines == ["DAY FOR THE", "PRESERVATION OF", "THE OZONE LAYER"]
+    assert not any("INT" in line for line in lines)
+
+
+def test_a_name_too_long_for_any_of_that_ends_in_dots():
+    lines = rules.holiday_lines(
+        "International Day for the Total Elimination of Nuclear Weapons"
+    )
+
+    assert lines == ["DAY FOR THE", "TOTAL", "ELIMINATION..."]
+
+
+def test_one_word_longer_than_the_board_is_cut_where_it_runs_out():
+    [line] = rules.holiday_lines("Supercalifragilisticexpialidocious")
+
+    assert line == "SUPERCALIFRA..."
+    assert len(line) == charcodes.COLS
+
+
+def test_a_holiday_that_is_only_its_scope_keeps_it():
+    # Dropping the scope would leave an empty board, which is worse.
+    assert rules.holiday_lines("World") == ["WORLD"]
+
+
+def test_a_name_with_nothing_sayable_in_it_is_an_error():
+    with pytest.raises(ValueError, match="nothing in it"):
+        rules.holiday_lines("πππ")
+
+
+@pytest.mark.parametrize("name", A_YEAR_OF_HOLIDAYS)
+def test_every_name_lands_on_a_board_the_cloud_api_will_take(name):
+    lines = rules._down_the_middle(rules.holiday_lines(name))
+
+    # The same check send_lines makes, so a name that gets this far is a name
+    # the board is going to accept.
+    grid = charcodes.encode_lines(lines)
+    assert len(grid) == charcodes.ROWS
+    assert all(len(row) == charcodes.COLS for row in grid)
+
+
+def test_a_short_name_sits_in_the_middle_of_the_board_not_the_top():
+    assert rules._down_the_middle(["WORLD"]) == ["", "WORLD"]
+    assert rules._down_the_middle(["A", "B"]) == ["A", "B"]
+    assert rules._down_the_middle(["A", "B", "C"]) == ["A", "B", "C"]
+
+
+@pytest.mark.asyncio
+async def test_showing_a_holiday_puts_one_of_the_day_s_names_up(tmp_path):
+    ctx = FakeContext(tmp_path)
+    ctx.holidays.remember(date.today(), [SPINACH, CHICKEN])
+
+    await rules.show_holiday(ctx, {})
+
+    [lines] = ctx.board.lines
+    assert lines in (
+        rules._down_the_middle(rules.holiday_lines(SPINACH.name)),
+        rules._down_the_middle(rules.holiday_lines(CHICKEN.name)),
+    )
+
+
+@pytest.mark.asyncio
+async def test_showing_a_holiday_asks_checkiday_for_nothing(tmp_path):
+    checkiday = FakeCheckiday([SPINACH])
+    ctx = FakeContext(tmp_path, checkiday)
+    ctx.holidays.remember(date.today(), [SPINACH])
+
+    await rules.show_holiday(ctx, {})
+
+    # It reads the day the fetch already paid for; the allowance is untouched.
+    assert checkiday.asked == []
+
+
+@pytest.mark.asyncio
+async def test_a_day_nobody_fetched_leaves_the_board_alone(tmp_path, caplog):
+    ctx = FakeContext(tmp_path)
+
+    await rules.show_holiday(ctx, {})
+
+    assert ctx.board.lines == []
+    assert "nothing written down" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_day_that_held_no_holidays_leaves_the_board_alone_too(tmp_path):
+    ctx = FakeContext(tmp_path)
+    ctx.holidays.remember(date.today(), [])
+
+    await rules.show_holiday(ctx, {})
+
+    assert ctx.board.lines == []
+
+
+@pytest.mark.asyncio
+async def test_a_day_in_the_event_data_is_the_day_that_is_shown(tmp_path):
+    ctx = FakeContext(tmp_path)
+    ctx.holidays.remember(date(2026, 9, 22), [CHICKEN])
+
+    await rules.show_holiday(ctx, {"date": "2026-09-22"})
+
+    [lines] = ctx.board.lines
+    assert lines == rules._down_the_middle(rules.holiday_lines(CHICKEN.name))
+
+
+@pytest.mark.asyncio
+async def test_a_name_the_board_cannot_say_costs_that_holiday_and_no_more(
+    tmp_path, caplog
+):
+    unsayable = Holiday("ddddddddddddddddddddddddddddddd1", "πππ")
+    ctx = FakeContext(tmp_path)
+    ctx.holidays.remember(date.today(), [unsayable, SPINACH])
+
+    await rules.show_holiday(ctx, {})
+
+    [lines] = ctx.board.lines
+    assert lines == rules._down_the_middle(rules.holiday_lines(SPINACH.name))
+    assert "cannot say any of it" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_day_of_nothing_but_unsayable_names_leaves_the_board_alone(tmp_path):
+    unsayable = Holiday("ddddddddddddddddddddddddddddddd2", "πππ")
+    ctx = FakeContext(tmp_path)
+    ctx.holidays.remember(date.today(), [unsayable])
+
+    await rules.show_holiday(ctx, {})
+
+    assert ctx.board.lines == []

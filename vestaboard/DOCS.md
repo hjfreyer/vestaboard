@@ -51,6 +51,7 @@ Use the **Fire event** action (under *Other actions* in the automation editor):
 | `vestaboard_smoker`   | Shows a cook: `food`, `air`, and a `duration` to count down. |
 | `vestaboard_forecast` | Shows the date, the day's weather, and its high and low.     |
 | `vestaboard_fetch_holidays` | Looks up today's holidays and writes them down.        |
+| `vestaboard_show_holiday` | Puts one of today's holidays on the board.               |
 
 A half-hourly rotation, then, is an automation and not a code change:
 
@@ -278,6 +279,38 @@ and choosing the timezone it is reckoned in needs an Enterprise one, so the app
 asks what today is and files the answer under whichever day Checkiday says that
 was. On a free key that is worked out in US Central time, so fire the
 automation in the morning, when that is the same day it is here.
+
+## Showing a holiday
+
+`vestaboard_show_holiday` puts one of the day's holidays on the board, picked
+at random from whatever `vestaboard_fetch_holidays` wrote down.
+
+```yaml
+alias: Vestaboard holiday
+triggers:
+  - trigger: time_pattern
+    hours: "/2"
+actions:
+  - event: vestaboard_show_holiday
+```
+
+It asks Checkiday for nothing, so it costs none of the monthly allowance and
+can fire as often as you like. A day that has not been looked up yet, or that
+held no holidays, is logged and leaves the board as it was -- so this wants the
+look-up automation above running first.
+
+The board is three rows of fifteen, which many holidays do not fit in. A name
+that will not go on is shortened a step at a time and no further than it must
+be: `NATIONAL` becomes `NAT'L` and `INTERNATIONAL` becomes `INT'L`, then the
+scope is dropped altogether, and only after that are the leftover words
+replaced with dots.
+
+| The holiday | What the board says |
+| --- | --- |
+| National Chicken Month | NATIONAL / CHICKEN MONTH |
+| International Day of Persons with Disabilities | INT'L DAY OF / PERSONS WITH / DISABILITIES |
+| International Day for the Preservation of the Ozone Layer | DAY FOR THE / PRESERVATION OF / THE OZONE LAYER |
+| International Day for the Total Elimination of Nuclear Weapons | DAY FOR THE / TOTAL / ELIMINATION... |
 
 ## Changing what gets sent
 

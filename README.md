@@ -306,6 +306,59 @@ afternoon. The log says when that happens, and `refresh: true` tries it anyway
 There is nothing else to send: a `date` in the `event_data` is not asked for,
 since asking for one is the Pro plan's to do.
 
+`vestaboard_show_holiday` is what puts one on the board. It reads what the
+fetch wrote down, picks one of the day's holidays at random, and lays the name
+out:
+
+```yaml
+alias: Vestaboard holiday
+triggers:
+  - trigger: time_pattern
+    hours: "/2"
+actions:
+  - event: vestaboard_show_holiday
+```
+
+Nothing is asked of Checkiday here, so this is free to fire as often as you
+like: it only ever reads the day the fetch already paid for. A day nobody
+fetched, and a day that turned out to hold no holidays, are both logged and
+leave the board showing whatever it had.
+
+Fifteen chips across and three down is not much room for a name like
+International Day for the Preservation of the Ozone Layer, so a name that will
+not go on is shortened a step at a time, and no further than it has to be.
+First the scope is written short -- `NATIONAL` becomes `NAT'L` and
+`INTERNATIONAL` becomes `INT'L` -- then it is dropped altogether, and only if
+it still will not go are the words that are left over replaced with dots:
+
+```
+National Chicken Month           NATIONAL
+                                 CHICKEN MONTH
+
+International Day of Persons     INT'L DAY OF
+with Disabilities                PERSONS WITH
+                                 DISABILITIES
+
+International Day for the        DAY FOR THE
+Preservation of the Ozone        PRESERVATION OF
+Layer                            THE OZONE LAYER
+
+International Day for the        DAY FOR THE
+Total Elimination of Nuclear     TOTAL
+Weapons                          ELIMINATION...
+```
+
+`WORLD` is already as short as it goes, so it comes through the first step
+unchanged and goes at the second. A holiday whose whole name is its scope keeps
+it, since a blank board is worse than one that overreaches. Names are wrapped
+at the spaces and nowhere else, and the one word too long for a row on its own
+is cut where it runs out.
+
+Checkiday writes for a web page, so a name can arrive with a curly apostrophe,
+an en dash or an accent in it. Those are spelled the plain way the board has
+flaps for, and anything still unsayable becomes a space rather than an error --
+one strange character should cost that character and not the whole board.
+
 `ctx.board` sends to the board, `ctx.hass` reads state and calls services, and
 `ctx.art` is the art library: `ctx.art.grid("rainbow")` for a named piece,
 `ctx.art.grid()` for a random one from the `art` category, and
