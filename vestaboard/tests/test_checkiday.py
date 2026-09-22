@@ -4,7 +4,13 @@ from datetime import date
 
 import pytest
 
-from vestaboard_ha.checkiday import Checkiday, CheckidayError, Holiday, holidays_in
+from vestaboard_ha.checkiday import (
+    Checkiday,
+    CheckidayError,
+    Holiday,
+    holidays_in,
+    listing_date,
+)
 
 A_DAY = date(2026, 9, 22)
 
@@ -76,7 +82,7 @@ async def test_a_date_s_holidays_come_back_as_one_list():
 
     found = await Checkiday("key", session).holidays(A_DAY)
 
-    assert found == [
+    assert found.holidays == [
         Holiday(SPINACH["id"], "Fresh Spinach Day", SPINACH["url"], False),
         Holiday(FALL["id"], "First Day of Fall", FALL["url"], False),
         Holiday(AWARENESS["id"], "National Chicken Month", AWARENESS["url"], True),
@@ -87,14 +93,14 @@ async def test_a_date_s_holidays_come_back_as_one_list():
 async def test_a_week_or_a_month_already_running_is_a_holiday_too():
     session = FakeSession(a_listing(multiday_ongoing=[AWARENESS]))
 
-    [holiday] = await Checkiday("key", session).holidays(A_DAY)
+    [holiday] = (await Checkiday("key", session).holidays(A_DAY)).holidays
 
     assert holiday.name == "National Chicken Month"
     assert holiday.multiday
 
 
 @pytest.mark.asyncio
-async def test_the_request_carries_the_key_the_date_and_the_timezone():
+async def test_a_paid_plan_may_say_which_date_and_whose_timezone():
     session = FakeSession(a_listing())
 
     await Checkiday("secret", session, timezone="America/Los_Angeles").holidays(A_DAY)
@@ -109,7 +115,7 @@ async def test_the_request_carries_the_key_the_date_and_the_timezone():
 
 
 @pytest.mark.asyncio
-async def test_nothing_we_cannot_answer_goes_in_the_request():
+async def test_a_free_plan_request_says_only_the_one_thing_it_may_say():
     session = FakeSession(a_listing())
 
     await Checkiday("secret", session).holidays()
@@ -125,7 +131,9 @@ async def test_the_same_holiday_in_two_lists_is_one_holiday():
         a_listing(multiday_starting=[AWARENESS], multiday_ongoing=[AWARENESS])
     )
 
-    assert len(await Checkiday("key", session).holidays(A_DAY)) == 1
+    found = await Checkiday("key", session).holidays(A_DAY)
+
+    assert len(found.holidays) == 1
 
 
 @pytest.mark.asyncio
@@ -136,7 +144,7 @@ async def test_a_holiday_with_no_id_or_no_name_is_left_out():
 
     found = await Checkiday("key", session).holidays(A_DAY)
 
-    assert [holiday.name for holiday in found] == ["Fresh Spinach Day"]
+    assert [h.name for h in found.holidays] == ["Fresh Spinach Day"]
 
 
 @pytest.mark.asyncio
@@ -188,7 +196,7 @@ def test_a_listing_with_no_lists_in_it_is_an_error():
 
 
 def test_a_day_with_nothing_on_it_is_no_holidays_rather_than_an_error():
-    assert holidays_in(a_listing()) == []
+    assert holidays_in(a_listing()).holidays == []
 
 
 @pytest.mark.asyncio
@@ -199,3 +207,34 @@ async def test_a_key_the_gateway_will_not_take_says_why():
 
     with pytest.raises(CheckidayError, match="Invalid authentication credentials"):
         await Checkiday("wrong", session).holidays(A_DAY)
+
+
+@pytest.mark.asyncio
+async def test_nothing_but_adult_is_sent_when_there_is_nothing_else_to_say():
+    # The shape of every request a free or Starter key can make: saying either
+    # of the other two is refused rather than ignored.
+    session = FakeSession(a_listing())
+
+    await Checkiday("key", session).holidays()
+
+    assert session.calls[0]["params"] == {"adult": "false"}
+
+
+@pytest.mark.asyncio
+async def test_the_answer_says_which_day_it_is_for():
+    session = FakeSession(a_listing(events=[SPINACH]))
+
+    found = await Checkiday("key", session).holidays()
+
+    # Whose today it is depends on a timezone only an Enterprise plan may
+    # choose, so the day is read from the answer rather than from our clock.
+    assert found.day == A_DAY
+
+
+def test_a_day_we_cannot_read_is_no_day_rather_than_a_wrong_one():
+    assert listing_date("9/22/2026") == A_DAY
+    assert listing_date("2026-09-22") == A_DAY
+    assert listing_date("") is None
+    assert listing_date(None) is None
+    assert listing_date(1758499200) is None
+    assert holidays_in({"events": [], "date": "the feast of stephen"}).day is None

@@ -273,8 +273,11 @@ that has failed three times is left until tomorrow instead of being retried all
 afternoon. `refresh: true` is also how you try again once whatever was wrong is
 fixed.
 
-Today is the app's own day unless the automation sends a `date`, and it is read
-in your Home Assistant's timezone, which Checkiday is told about too.
+There is no way to ask about another day. Choosing the date needs a Pro plan
+and choosing the timezone it is reckoned in needs an Enterprise one, so the app
+asks what today is and files the answer under whichever day Checkiday says that
+was. On a free key that is worked out in US Central time, so fire the
+automation in the morning, when that is the same day it is here.
 
 ## Changing what gets sent
 

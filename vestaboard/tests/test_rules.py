@@ -1,9 +1,10 @@
-from datetime import date
+import logging
+from datetime import date, timedelta
 
 import pytest
 
 from vestaboard_ha import art, charcodes, rules
-from vestaboard_ha.checkiday import CheckidayError, Holiday
+from vestaboard_ha.checkiday import CheckidayError, Holiday, Listing
 from vestaboard_ha.holidays import HolidayStore
 from vestaboard_ha.library import Library
 
@@ -23,17 +24,20 @@ class FakeBoard:
 class FakeCheckiday:
     """Checkiday without the asking: what it would say, and what it was asked."""
 
-    def __init__(self, giving=(), *, configured=True, raising=None):
+    def __init__(self, giving=(), *, configured=True, raising=None, day=None):
         self.giving = list(giving)
         self.configured = configured
         self.raising = raising
+        # Which day Checkiday says it answered for. None is an answer that did
+        # not say, which leaves the rule its own today.
+        self.day = day
         self.asked = []
 
     async def holidays(self, day=None, *, adult=False):
         self.asked.append(day)
         if self.raising is not None:
             raise self.raising
-        return list(self.giving)
+        return Listing(self.day, list(self.giving))
 
 
 class FakeContext:
@@ -743,12 +747,11 @@ CHICKEN = Holiday(
 
 @pytest.mark.asyncio
 async def test_fetching_holidays_writes_the_day_and_what_its_ids_mean(tmp_path):
-    checkiday = FakeCheckiday([SPINACH, CHICKEN])
+    checkiday = FakeCheckiday([SPINACH, CHICKEN], day=date(2026, 9, 22))
     ctx = FakeContext(tmp_path, checkiday)
 
-    await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+    await rules.fetch_holidays(ctx, {})
 
-    assert checkiday.asked == [date(2026, 9, 22)]
     assert ctx.holidays.ids_for(date(2026, 9, 22)) == [SPINACH.id, CHICKEN.id]
     assert ctx.holidays.holidays_for(date(2026, 9, 22)) == [SPINACH, CHICKEN]
     # It is the fetching; nothing about it reaches the board.
@@ -756,14 +759,49 @@ async def test_fetching_holidays_writes_the_day_and_what_its_ids_mean(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_no_date_is_ever_asked_for_since_that_wants_a_pro_plan(tmp_path):
+    checkiday = FakeCheckiday([SPINACH])
+    ctx = FakeContext(tmp_path, checkiday)
+
+    await rules.fetch_holidays(ctx, {})
+    # Even when an automation tries to name one, which an older README taught.
+    await rules.fetch_holidays(ctx, {"date": "2026-09-22", "refresh": True})
+
+    assert checkiday.asked == [None, None]
+
+
+@pytest.mark.asyncio
+async def test_the_day_is_checkiday_s_rather_than_our_clock_s(tmp_path, caplog):
+    caplog.set_level(logging.INFO)
+    # The evening hours when their timezone has turned over and ours has not.
+    theirs = date.today() + timedelta(days=1)
+    ctx = FakeContext(tmp_path, FakeCheckiday([SPINACH], day=theirs))
+
+    await rules.fetch_holidays(ctx, {})
+
+    assert ctx.holidays.ids_for(theirs) == [SPINACH.id]
+    assert ctx.holidays.ids_for(date.today()) is None
+    assert "filing them under theirs" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_answer_that_does_not_say_which_day_is_filed_under_ours(tmp_path):
+    ctx = FakeContext(tmp_path, FakeCheckiday([SPINACH], day=None))
+
+    await rules.fetch_holidays(ctx, {})
+
+    assert ctx.holidays.ids_for(date.today()) == [SPINACH.id]
+
+
+@pytest.mark.asyncio
 async def test_a_day_already_fetched_is_not_fetched_again(tmp_path):
     checkiday = FakeCheckiday([SPINACH])
     ctx = FakeContext(tmp_path, checkiday)
 
-    await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
-    await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+    await rules.fetch_holidays(ctx, {})
+    await rules.fetch_holidays(ctx, {})
 
-    assert checkiday.asked == [date(2026, 9, 22)]
+    assert len(checkiday.asked) == 1
 
 
 @pytest.mark.asyncio
@@ -771,23 +809,24 @@ async def test_a_day_with_no_holidays_on_it_is_not_fetched_again_either(tmp_path
     checkiday = FakeCheckiday([])
     ctx = FakeContext(tmp_path, checkiday)
 
-    await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
-    await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+    await rules.fetch_holidays(ctx, {})
+    await rules.fetch_holidays(ctx, {})
 
-    assert checkiday.asked == [date(2026, 9, 22)]
+    assert len(checkiday.asked) == 1
+    assert ctx.holidays.ids_for(date.today()) == []
 
 
 @pytest.mark.asyncio
 async def test_refresh_asks_about_a_day_all_over_again(tmp_path):
     checkiday = FakeCheckiday([SPINACH])
     ctx = FakeContext(tmp_path, checkiday)
-    await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+    await rules.fetch_holidays(ctx, {})
 
     checkiday.giving = [SPINACH, CHICKEN]
-    await rules.fetch_holidays(ctx, {"date": "2026-09-22", "refresh": "true"})
+    await rules.fetch_holidays(ctx, {"refresh": "true"})
 
     assert len(checkiday.asked) == 2
-    assert ctx.holidays.ids_for(date(2026, 9, 22)) == [SPINACH.id, CHICKEN.id]
+    assert ctx.holidays.ids_for(date.today()) == [SPINACH.id, CHICKEN.id]
 
 
 @pytest.mark.asyncio
@@ -795,42 +834,11 @@ async def test_no_key_means_nothing_is_fetched_and_the_log_says_so(tmp_path, cap
     checkiday = FakeCheckiday([SPINACH], configured=False)
     ctx = FakeContext(tmp_path, checkiday)
 
-    await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
-
-    assert checkiday.asked == []
-    assert ctx.holidays.ids_for(date(2026, 9, 22)) is None
-    assert "no Checkiday API key" in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_without_a_date_the_holidays_are_today_s(tmp_path):
-    checkiday = FakeCheckiday([SPINACH])
-    ctx = FakeContext(tmp_path, checkiday)
-
     await rules.fetch_holidays(ctx, {})
 
-    assert checkiday.asked == [date.today()]
-    assert ctx.holidays.ids_for(date.today()) == [SPINACH.id]
-
-
-@pytest.mark.asyncio
-async def test_a_forecast_entry_s_datetime_is_a_day_to_ask_about(tmp_path):
-    checkiday = FakeCheckiday([SPINACH])
-    ctx = FakeContext(tmp_path, checkiday)
-
-    await rules.fetch_holidays(ctx, {"datetime": "2026-09-22T06:00:00-07:00"})
-
-    assert checkiday.asked == [date(2026, 9, 22)]
-
-
-def test_an_automation_s_yes_survives_being_templated_to_a_string():
-    assert rules._flag(True)
-    assert rules._flag("true")
-    assert rules._flag("True")
-    assert rules._flag("on")
-    assert not rules._flag(False)
-    assert not rules._flag("")
-    assert not rules._flag(None)
+    assert checkiday.asked == []
+    assert ctx.holidays.ids_for(date.today()) is None
+    assert "no Checkiday API key" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -839,11 +847,11 @@ async def test_an_ask_that_went_wrong_is_counted_and_still_raised(tmp_path):
     ctx = FakeContext(tmp_path, checkiday)
 
     with pytest.raises(CheckidayError):
-        await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+        await rules.fetch_holidays(ctx, {})
 
-    assert ctx.holidays.attempts_for(date(2026, 9, 22)) == 1
+    assert ctx.holidays.attempts_for(date.today()) == 1
     # Still a day worth asking about, just not one we have an answer for.
-    assert ctx.holidays.ids_for(date(2026, 9, 22)) is None
+    assert ctx.holidays.ids_for(date.today()) is None
 
 
 @pytest.mark.asyncio
@@ -853,9 +861,9 @@ async def test_a_day_that_keeps_going_wrong_is_left_until_tomorrow(tmp_path, cap
 
     for _ in range(rules.MAX_ATTEMPTS):
         with pytest.raises(CheckidayError):
-            await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+            await rules.fetch_holidays(ctx, {})
 
-    await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+    await rules.fetch_holidays(ctx, {})
 
     assert len(checkiday.asked) == rules.MAX_ATTEMPTS
     assert "left until tomorrow" in caplog.text
@@ -867,25 +875,35 @@ async def test_refresh_tries_a_given_up_day_anyway(tmp_path):
     ctx = FakeContext(tmp_path, checkiday)
     for _ in range(rules.MAX_ATTEMPTS):
         with pytest.raises(CheckidayError):
-            await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+            await rules.fetch_holidays(ctx, {})
 
     checkiday.raising = None
     checkiday.giving = [SPINACH]
-    await rules.fetch_holidays(ctx, {"date": "2026-09-22", "refresh": True})
+    await rules.fetch_holidays(ctx, {"refresh": True})
 
-    assert ctx.holidays.ids_for(date(2026, 9, 22)) == [SPINACH.id]
+    assert ctx.holidays.ids_for(date.today()) == [SPINACH.id]
     # A day that answered starts again with a clean slate.
-    assert ctx.holidays.attempts_for(date(2026, 9, 22)) == 0
+    assert ctx.holidays.attempts_for(date.today()) == 0
 
 
 @pytest.mark.asyncio
 async def test_a_refresh_that_fails_keeps_the_holidays_the_day_already_had(tmp_path):
     checkiday = FakeCheckiday([SPINACH])
     ctx = FakeContext(tmp_path, checkiday)
-    await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+    await rules.fetch_holidays(ctx, {})
 
     checkiday.raising = CheckidayError("the month is spent")
     with pytest.raises(CheckidayError):
-        await rules.fetch_holidays(ctx, {"date": "2026-09-22", "refresh": True})
+        await rules.fetch_holidays(ctx, {"refresh": True})
 
-    assert ctx.holidays.holidays_for(date(2026, 9, 22)) == [SPINACH]
+    assert ctx.holidays.holidays_for(date.today()) == [SPINACH]
+
+
+def test_an_automation_s_yes_survives_being_templated_to_a_string():
+    assert rules._flag(True)
+    assert rules._flag("true")
+    assert rules._flag("True")
+    assert rules._flag("on")
+    assert not rules._flag(False)
+    assert not rules._flag("")
+    assert not rules._flag(None)

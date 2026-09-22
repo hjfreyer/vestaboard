@@ -31,12 +31,6 @@ SUPERVISOR_WS = "ws://supervisor/core/websocket"
 # port named as ``ingress_port`` in config.yaml, so the two have to agree.
 DEFAULT_WEB_PORT = 8099
 
-#: Where the container is told what timezone it is in. Supervisor sets this to
-#: Home Assistant's own, and docker-compose passes it through, so it is the
-#: same answer the clock gives -- which is what makes "today" mean one thing
-#: here and at Checkiday both.
-TIMEZONE_PATH = Path("/etc/timezone")
-
 
 @dataclass(frozen=True)
 class Settings:
@@ -50,7 +44,6 @@ class Settings:
     web_port: int = DEFAULT_WEB_PORT
     art_dir: Path = DEFAULT_ART_DIR
     holidays_dir: Path = DEFAULT_HOLIDAYS_DIR
-    timezone: str = ""
 
     @property
     def has_hass(self) -> bool:
@@ -78,23 +71,6 @@ def _env_bool(name: str, default: bool) -> bool:
     if raw is None:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _timezone() -> str:
-    """Which timezone we are in, named the way Checkiday wants it.
-
-    ``TZ`` is what docker-compose sets and what Supervisor puts in the
-    container; ``/etc/timezone`` is where the same answer ends up on a Debian
-    base. Nothing at all is not worth guessing at -- an empty answer leaves the
-    timezone out of the request, and Checkiday falls back to its own.
-    """
-    named = os.environ.get("TZ", "").strip()
-    if named:
-        return named
-    try:
-        return TIMEZONE_PATH.read_text().strip()
-    except OSError:
-        return ""
 
 
 def load() -> Settings:
@@ -125,5 +101,4 @@ def load() -> Settings:
         web_port=_env_int("WEB_PORT", DEFAULT_WEB_PORT),
         art_dir=Path(os.environ.get("ART_DIR") or DEFAULT_ART_DIR),
         holidays_dir=Path(os.environ.get("HOLIDAYS_DIR") or DEFAULT_HOLIDAYS_DIR),
-        timezone=_timezone(),
     )

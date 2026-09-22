@@ -787,18 +787,23 @@ async def fetch_holidays(ctx: Context, data: dict[str, Any]) -> None:
             event_data:
               refresh: true
 
-    The day is ours unless the automation sends one, as ``date`` or as the
-    ``datetime`` a forecast entry carries, and it is read in the timezone the
-    container is in, which is Home Assistant's own.
+    Which day this is about is Checkiday's to say rather than ours. Asking for
+    a particular date wants a Pro plan, so nothing is asked for and today is
+    what comes back -- worked out in Checkiday's own timezone unless the plan
+    is an Enterprise one, which is why the day is taken from the answer. Our
+    own is only a guess at which day that will be, which is all the cache
+    check needs; they agree every hour of the day but the last few.
     """
-    day = _date_asked_for(_either(data, "date", "datetime"), rule="holidays")
+    # Our own today, which is a guess at Checkiday's: good enough to know
+    # whether we have already asked, and replaced by the answer's own day.
+    today = date.today()
     anyway = _flag(data.get(REFRESH_KEY))
 
-    known = ctx.holidays.ids_for(day)
+    known = ctx.holidays.ids_for(today)
     if known is not None and not anyway:
         _LOGGER.info(
             "holidays: %s is already fetched, with %d on it; not asking again",
-            day,
+            today,
             len(known),
         )
         return
@@ -809,31 +814,43 @@ async def fetch_holidays(ctx: Context, data: dict[str, Any]) -> None:
         _LOGGER.warning(
             "holidays: no Checkiday API key configured, so there is nothing "
             "to fetch for %s",
-            day,
+            today,
         )
         return
 
-    attempts = ctx.holidays.attempts_for(day)
+    attempts = ctx.holidays.attempts_for(today)
     if attempts >= MAX_ATTEMPTS and not anyway:
         _LOGGER.warning(
             "holidays: asking about %s has gone wrong %d times, so it is being "
             "left until tomorrow; fire this with refresh: true to try anyway",
-            day,
+            today,
             attempts,
         )
         return
 
     try:
-        found = await ctx.checkiday.holidays(day)
+        listing = await ctx.checkiday.holidays()
     except CheckidayError:
         # A request spent for nothing. Worth writing down, since it is the
         # count of them that stops us spending the rest of the month too.
-        ctx.holidays.note_attempt(day)
+        ctx.holidays.note_attempt(today)
         raise
 
-    ctx.holidays.remember(day, found)
+    day = listing.day or today
+    if day != today:
+        # The evening hours when Checkiday's timezone has turned over and ours
+        # has not. Their day is the one the holidays are actually for.
+        _LOGGER.info(
+            "holidays: Checkiday answered for %s where our own today is %s; "
+            "filing them under theirs",
+            day,
+            today,
+        )
+
+    ctx.holidays.remember(day, listing.holidays)
     _LOGGER.info(
         "holidays: %s is %s",
         day,
-        ", ".join(holiday.name for holiday in found) or "no holiday at all",
+        ", ".join(holiday.name for holiday in listing.holidays)
+        or "no holiday at all",
     )
