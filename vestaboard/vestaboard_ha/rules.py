@@ -857,15 +857,15 @@ async def fetch_holidays(ctx: Context, data: dict[str, Any]) -> None:
     )
 
 
-#: The words a holiday uses to say how far its claim reaches. They are the
-#: first thing to go when a name will not fit: written the short way where
-#: there is one, and dropped after that. A board on a kitchen wall is not in
-#: any doubt about which world it is on.
-SCOPE_WORDS = ("NATIONAL", "INTERNATIONAL", "WORLD")
-
-#: How to write one of them shorter. WORLD is already as short as it goes, so
-#: it has no entry here and survives to the step that drops it instead.
-SCOPE_SHORT = {"NATIONAL": "NAT'L", "INTERNATIONAL": "INT'L"}
+#: The words a holiday uses to say how far its claim reaches, and the short
+#: way to write each one. They are the first thing to go when a name will not
+#: fit: written short, and then dropped altogether -- a board on a kitchen wall
+#: is not in any doubt about which world it is on.
+SCOPE_SHORT = {
+    "NATIONAL": "NATL",
+    "INTERNATIONAL": "INTL",
+    "WORLD": "WRLD",
+}
 
 #: What stands in for the words that did not make it. The board has no single
 #: flap for one, so it is three full stops and takes three chips.
@@ -943,7 +943,7 @@ def _unscoped(words: list[str]) -> list[str]:
     A holiday whose name is nothing but its scope keeps it, since a board with
     nothing on it is worse than one that overreaches.
     """
-    return [word for word in words if word not in SCOPE_WORDS] or words
+    return [word for word in words if word not in SCOPE_SHORT] or words
 
 
 def _ellipsized(words: list[str]) -> list[str]:
@@ -967,7 +967,7 @@ def holiday_lines(name: str) -> list[str]:
     rare to get past the third.
 
     The scope is dropped from the name as it was written rather than from the
-    shortened one, since ``NAT'L`` is no longer the word being looked for.
+    shortened one, since ``NATL`` is no longer the word being looked for.
     """
     words = sayable(name).split()
     if not words:
