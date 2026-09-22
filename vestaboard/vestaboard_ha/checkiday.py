@@ -8,6 +8,19 @@ id that is worth keeping: a name can be rewritten, and an id cannot.
 Every call is one request of a monthly allowance, which is why nothing here
 asks twice for the same day. ``holidays.py`` is what remembers a day, and the
 ``fetch_holidays`` rule is what decides whether to ask at all.
+
+Two of the three things a request can say are sold rather than given, and a
+plan that does not include one is not allowed to say it at all:
+
+* ``adult``, whether to include the entries Checkiday marks unsafe for children
+  or for work, is on every plan, the free one included.
+* ``date``, which day to ask about, wants a Pro plan. Without one there is only
+  today, which is why this is asked with no date at all and the day comes back
+  in the answer.
+* ``timezone``, whose today that is, wants an Enterprise plan. Without one it
+  is Checkiday's own default, ``America/Chicago`` -- so the day in the answer
+  is worth reading rather than assuming, since it is not necessarily the day it
+  is here.
 """
 
 from __future__ import annotations
@@ -15,7 +28,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping
-from datetime import date
+from datetime import date, datetime
 from typing import Any, NamedTuple
 
 _LOGGER = logging.getLogger(__name__)
@@ -63,6 +76,39 @@ class Holiday(NamedTuple):
     multiday: bool = False
 
 
+class Listing(NamedTuple):
+    """A date's holidays, and the date Checkiday says they are for.
+
+    The date is worth carrying rather than assuming: without an Enterprise plan
+    the day is worked out in Checkiday's timezone and not in ours, so the two
+    part company for the hours of the evening they disagree about. ``day`` is
+    None when the answer did not say, which leaves the caller its own guess.
+    """
+
+    day: date | None
+    holidays: list[Holiday]
+
+
+#: How Checkiday writes the date it answered about: the American way round.
+#: The clients type it loosely enough to be a number as well, so anything
+#: unreadable is treated as no answer rather than as a wrong one.
+DATE_SHAPES = ("%m/%d/%Y", "%Y-%m-%d")
+
+
+def listing_date(raw: Any) -> date | None:
+    """Which day a listing says it is for, if it can be read."""
+    said = str(raw or "").strip()
+    if not said:
+        return None
+    for shape in DATE_SHAPES:
+        try:
+            return datetime.strptime(said, shape).date()
+        except ValueError:
+            continue
+    _LOGGER.warning("checkiday: %r is not a date I can read", raw)
+    return None
+
+
 def _holiday(entry: Any, multiday: bool) -> Holiday | None:
     """One entry of a listing, or None if it is not a holiday we can use.
 
@@ -90,7 +136,7 @@ def _holiday(entry: Any, multiday: bool) -> Holiday | None:
     )
 
 
-def holidays_in(payload: Any) -> list[Holiday]:
+def holidays_in(payload: Any) -> Listing:
     """Every holiday in a listing: the single days first, the longer ones after.
 
     A listing with none of the three lists in it is not a listing at all --
@@ -119,13 +165,14 @@ def holidays_in(payload: Any) -> list[Holiday]:
             if holiday is not None:
                 found.setdefault(holiday.id, holiday)
 
-    return list(found.values())
+    return Listing(listing_date(payload.get("date")), list(found.values()))
 
 
 class Checkiday:
     """Reads a date's holidays. One request per call, so call it once a day."""
 
     def __init__(self, api_key: str, session: Any, *, timezone: str = "") -> None:
+        """``timezone`` is only sent when given, and wants an Enterprise plan."""
         self._api_key = api_key
         self._session = session
         self._timezone = timezone
@@ -137,21 +184,24 @@ class Checkiday:
 
     async def holidays(
         self, day: date | None = None, *, adult: bool = False
-    ) -> list[Holiday]:
+    ) -> Listing:
         """The holidays on a date, or on Checkiday's own today without one.
 
-        ``adult`` is Checkiday's own switch for the entries it marks unsafe for
-        children or for work; this board is in a house, so it stays off.
+        A ``day`` wants a Pro plan, so the rule asks for none and takes whatever
+        today turns out to be; the answer says which day that was. ``adult`` is
+        Checkiday's own switch for the entries it marks unsafe for children or
+        for work, and is on every plan; this board is in a house, so it is off.
         """
         if not self._api_key:
             raise CheckidayError("no Checkiday API key configured")
 
+        # Only what the plan allows: anything else is not ignored but refused,
+        # so a free key that said either of the other two would get nothing at
+        # all rather than an answer worked out some other way.
         params = {"adult": "true" if adult else "false"}
         if day is not None:
             params["date"] = day.isoformat()
         if self._timezone:
-            # Which day it is depends on where you are, and Checkiday's own
-            # default is a timezone we are probably not in.
             params["timezone"] = self._timezone
 
         async with self._session.get(

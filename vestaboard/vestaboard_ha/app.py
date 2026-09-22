@@ -90,9 +90,9 @@ async def run() -> None:
                 settings.rest_url, settings.ws_url, settings.hass_token, session
             ),
             art=Library(settings.art_dir),
-            checkiday=Checkiday(
-                settings.checkiday_api_key, session, timezone=settings.timezone
-            ),
+            # No timezone: saying one wants an Enterprise plan, so Checkiday
+            # works today out in its own and tells us which day it landed on.
+            checkiday=Checkiday(settings.checkiday_api_key, session),
             holidays=HolidayStore(settings.holidays_dir),
             settings=settings,
         )

@@ -259,6 +259,15 @@ alone, which is what an install that does not want holidays looks like.
 A free key is a hundred requests a month, which is the whole reason for the
 caches below: one ask a day is thirty of them, and everything else is margin.
 
+What a request is allowed to say is sold separately from how many of them you
+get. Asking about a particular date wants a Pro plan, and naming the timezone
+that date is reckoned in wants an Enterprise one, so this asks for neither: the
+question is only ever "what is today", and the answer says which day Checkiday
+decided that was. Below an Enterprise plan that day is worked out in
+`America/Chicago` rather than wherever you are, which is why it is read off the
+answer instead of taken from our own clock -- and why the automation above
+fires in the morning, the part of the day the two agree about.
+
 What it writes is two caches under `/data/holidays`, which is the app's own
 storage and so survives restarts and updates:
 
@@ -294,9 +303,8 @@ that has failed three times is left until tomorrow rather than retried all
 afternoon. The log says when that happens, and `refresh: true` tries it anyway
 -- which is the thing to fire once you have fixed whatever was wrong.
 
-The day is the app's own unless the automation sends one, as `date` or as the
-`datetime` a forecast entry carries. Checkiday is told which timezone that day
-is in, so today means the same thing at both ends.
+There is nothing else to send: a `date` in the `event_data` is not asked for,
+since asking for one is the Pro plan's to do.
 
 `ctx.board` sends to the board, `ctx.hass` reads state and calls services, and
 `ctx.art` is the art library: `ctx.art.grid("rainbow")` for a named piece,

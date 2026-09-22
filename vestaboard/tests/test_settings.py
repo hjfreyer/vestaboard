@@ -112,27 +112,3 @@ def test_the_holidays_live_in_the_app_storage_beside_the_art(tmp_path, monkeypat
 
     monkeypatch.setenv("HOLIDAYS_DIR", "/somewhere/else")
     assert settings_module.load().holidays_dir == Path("/somewhere/else")
-
-
-def test_the_timezone_is_the_one_the_container_is_in(tmp_path, monkeypatch):
-    monkeypatch.setattr(settings_module, "OPTIONS_PATH", tmp_path / "missing.json")
-    named = tmp_path / "timezone"
-    named.write_text("America/Chicago\n")
-    monkeypatch.setattr(settings_module, "TIMEZONE_PATH", named)
-
-    monkeypatch.setenv("TZ", "America/Los_Angeles")
-    assert settings_module.load().timezone == "America/Los_Angeles"
-
-    # Supervisor sets the container's clock without always setting TZ.
-    monkeypatch.delenv("TZ")
-    assert settings_module.load().timezone == "America/Chicago"
-
-
-def test_a_timezone_we_cannot_name_is_left_for_checkiday_to_guess(
-    tmp_path, monkeypatch
-):
-    monkeypatch.setattr(settings_module, "OPTIONS_PATH", tmp_path / "missing.json")
-    monkeypatch.setattr(settings_module, "TIMEZONE_PATH", tmp_path / "missing")
-    monkeypatch.delenv("TZ", raising=False)
-
-    assert settings_module.load().timezone == ""
