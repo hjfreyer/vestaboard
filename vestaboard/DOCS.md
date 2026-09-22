@@ -4,11 +4,12 @@ Pushes messages to my Vestaboard in response to Home Assistant events.
 
 ## Configuration
 
-| Option      | What it is                                                             |
-| ----------- | ---------------------------------------------------------------------- |
-| `api_token` | Vestaboard Cloud API token, from the Developer section of the web app. |
-| `log_level` | `debug` while you are working on rules, `info` otherwise.              |
-| `dry_run`   | Log what would be sent instead of sending it. Good for testing.        |
+| Option              | What it is                                                             |
+| ------------------- | ---------------------------------------------------------------------- |
+| `api_token`         | Vestaboard Cloud API token, from the Developer section of the web app. |
+| `checkiday_api_key` | Checkiday API key, for the holidays. Optional; leave it empty to skip. |
+| `log_level`         | `debug` while you are working on rules, `info` otherwise.              |
+| `dry_run`           | Log what would be sent instead of sending it. Good for testing.        |
 
 Home Assistant access needs no configuration: the app talks to it through the
 Supervisor proxy using the token Supervisor provides.
@@ -49,6 +50,7 @@ Use the **Fire event** action (under *Other actions* in the automation editor):
 | `vestaboard_eggs`     | Shows the egg numbers: `today`, `mtd` and `ytd`.             |
 | `vestaboard_smoker`   | Shows a cook: `food`, `air`, and a `duration` to count down. |
 | `vestaboard_forecast` | Shows the date, the day's weather, and its high and low.     |
+| `vestaboard_fetch_holidays` | Looks up today's holidays and writes them down.        |
 
 A half-hourly rotation, then, is an automation and not a code change:
 
@@ -227,6 +229,46 @@ Note, which draws that flap as a red heart -- and a reading that is missing or
 is not a number shows as `?` while the other rows still go up. A cook past ten
 hours needs a chip more for its timer, and every row steps left together to
 give it one, so the readings stay in a column.
+
+## The holidays
+
+`vestaboard_fetch_holidays` is the one action that puts nothing on the board.
+It asks Checkiday which of its several thousand holidays fall today -- the
+national days, the awareness months, and the properly obscure ones -- and keeps
+the answer, so that something later can make a board out of it.
+
+```yaml
+alias: Vestaboard holidays
+triggers:
+  - trigger: time
+    at: "06:30:00"
+actions:
+  - event: vestaboard_fetch_holidays
+```
+
+It needs a `checkiday_api_key` on the **Configuration** tab above. Without one
+it says so in the log and leaves everything alone, so an install that does not
+want holidays can leave the option empty.
+
+What it keeps is two sets of files under `/data/holidays`, which is the app's
+own storage and survives restarts and updates: one file per day, holding the
+ids of that day's holidays, and one file per holiday, saying what an id means.
+A day is only ever fetched once, so firing the event twice in a day costs
+nothing of the monthly allowance the key comes with, and a holiday's name is
+only ever fetched once however many years it comes round.
+
+To ask about a day that is already written down -- a holiday added to Checkiday
+partway through it, most likely:
+
+```yaml
+actions:
+  - event: vestaboard_fetch_holidays
+    event_data:
+      refresh: true
+```
+
+Today is the app's own day unless the automation sends a `date`, and it is read
+in your Home Assistant's timezone, which Checkiday is told about too.
 
 ## Changing what gets sent
 

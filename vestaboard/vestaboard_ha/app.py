@@ -12,7 +12,9 @@ import aiohttp
 from . import registry, web
 from . import settings as settings_module
 from .board import Vestaboard
+from .checkiday import Checkiday
 from .hass import HassClient
+from .holidays import HolidayStore
 from .library import Library
 from .settings import Settings
 
@@ -26,6 +28,8 @@ class Context:
     board: Vestaboard
     hass: HassClient
     art: Library
+    checkiday: Checkiday
+    holidays: HolidayStore
     settings: Settings
 
 
@@ -70,6 +74,11 @@ async def run() -> None:
     for rule in registry.ACTION_RULES:
         _LOGGER.info("action %s: fire the %s event", rule.name, rule.event_type)
 
+    if not settings.has_checkiday:
+        # Said once at startup rather than only when the event is fired, since
+        # an empty option is the likeliest reason a holiday board never comes.
+        _LOGGER.info("no Checkiday API key, so there are no holidays to look up")
+
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=30)
     ) as session:
@@ -81,6 +90,10 @@ async def run() -> None:
                 settings.rest_url, settings.ws_url, settings.hass_token, session
             ),
             art=Library(settings.art_dir),
+            checkiday=Checkiday(
+                settings.checkiday_api_key, session, timezone=settings.timezone
+            ),
+            holidays=HolidayStore(settings.holidays_dir),
             settings=settings,
         )
 

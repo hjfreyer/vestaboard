@@ -18,6 +18,7 @@ services:
       - ./data:/data
     environment:
       VESTABOARD_API_TOKEN: ${VESTABOARD_API_TOKEN}
+      CHECKIDAY_API_KEY: ${CHECKIDAY_API_KEY:-}
       HASS_URL: ${HASS_URL:-http://homeassistant.local:8123}
       HASS_TOKEN: ${HASS_TOKEN}
       LOG_LEVEL: ${LOG_LEVEL:-info}

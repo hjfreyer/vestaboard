@@ -21,9 +21,14 @@ panel_icon: mdi:palette
 panel_title: Vestaboard
 options:
   api_token: ""
+  checkiday_api_key: ""
   log_level: info
   dry_run: false
 schema:
   api_token: password
+  # Optional, with the trailing "?", because the holidays are a feature an
+  # install can do without: making it required would stop an app that is
+  # running happily today from starting after an update.
+  checkiday_api_key: password?
   log_level: list(debug|info|warning|error)
   dry_run: bool
