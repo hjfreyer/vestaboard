@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import logging
 import math
-import random
 import unicodedata
 from datetime import date, datetime
 from typing import Any
@@ -28,8 +27,15 @@ from . import art, charcodes
 from .app import Context
 from .checkiday import CheckidayError
 from .registry import on_action
+from .rotation import Rotation
 
 _LOGGER = logging.getLogger(__name__)
+
+#: The hens' rotation and the holidays', each holding its last few picks back
+#: so neither comes up the same two boards running. They are the app's memory
+#: of what it has shown and nothing more, so a restart starts them over.
+_HENS = Rotation()
+_HOLIDAYS = Rotation()
 
 
 @on_action("show_art")
@@ -79,12 +85,13 @@ async def text(ctx: Context, data: dict[str, Any]) -> None:
     await ctx.board.send_text(message)
 
 
-#: The hens, filling the chips to the left of the labels. One is picked at
-#: random each time the board goes up, so the eggs do not look the same every
-#: morning. Each is exactly the LABEL_COL chips it has to fill, written out to
-#: the last one so the source is the shape the board gets. Squares as in
-#: art.py, with characters among them where a square will not do: a ``0``, a
-#: ``,``, and ❤ for code 62, which this board draws as a red heart.
+#: The hens, filling the chips to the left of the labels. One is picked each
+#: time the board goes up, at random among the ones that have not been up
+#: lately, so the eggs do not look the same every morning. Each is exactly the
+#: LABEL_COL chips it has to fill, written out to the last one so the source is
+#: the shape the board gets. Squares as in art.py, with characters among them
+#: where a square will not do: a ``0``, a ``,``, and ❤ for code 62, which this
+#: board draws as a red heart.
 CHICKENS = (
     """
 ⬛⬛🟥🟥⬛⬛⬛
@@ -169,11 +176,11 @@ def eggs_grid(data: dict[str, Any], chicken: str | None = None) -> list[list[int
     """The egg board: a hen on the left, a labeled count on each row.
 
     ``chicken`` is one of CHICKENS; None, which is what the rule passes, takes
-    one of them at random.
+    a turn of the hens' rotation.
     """
     grid = charcodes.blank_grid()
 
-    hen = art.rows(random.choice(CHICKENS) if chicken is None else chicken)
+    hen = art.rows(_HENS.choose(CHICKENS) if chicken is None else chicken)
     if (len(hen), len(hen[0])) != (charcodes.ROWS, LABEL_COL):
         raise ValueError(
             f"a hen is {charcodes.ROWS} rows of {LABEL_COL} chips, not "
@@ -995,7 +1002,8 @@ async def show_holiday(ctx: Context, data: dict[str, Any]) -> None:
     """Fire ``vestaboard_show_holiday`` to put one of today's holidays up.
 
     It reads what ``vestaboard_fetch_holidays`` wrote down, picks one of the
-    day's holidays at random, and puts its name on the board::
+    day's holidays -- at random among the ones not lately shown -- and puts its
+    name on the board::
 
         alias: Vestaboard holiday
         triggers:
@@ -1034,7 +1042,7 @@ async def show_holiday(ctx: Context, data: dict[str, Any]) -> None:
         )
         return
 
-    holiday = random.choice(showable)
+    holiday = _HOLIDAYS.choose(showable)
     lines = holiday_lines(holiday.name)
     _LOGGER.info("holidays: showing %r as %s", holiday.name, lines)
     await ctx.board.send_lines(_down_the_middle(lines))

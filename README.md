@@ -47,6 +47,7 @@ vestaboard/                the app; also the Docker build context
     rules.py               >>> the file worth editing <<<
     art.py                 the pixel art, its categories, and the encoding
     library.py             the art on disk, capturing it, and picking one
+    rotation.py            random picks that keep off the ones lately made
     web.py                 the art gallery, served over ingress
     app.py                 wires rules to the Home Assistant event stream
     registry.py            the @on_action decorator
@@ -113,9 +114,9 @@ alone; the Cloud API does not take a blank message.
 a hen in the seven chips on the left, `TODAY`, `MTD` and `YTD` down the middle,
 and a number against the right edge of each row. `today` is a count of eggs;
 `mtd` and `ytd` are eggs per day so far this month and this year. The hen is
-one of the `CHICKENS` in `rules.py`, picked at random, so add another there and
-it joins the rotation -- three rows of seven chips, blanks written out to the
-last one.
+one of the `CHICKENS` in `rules.py`, picked at random among the ones that have
+not been up lately, so add another there and it joins the rotation -- three
+rows of seven chips, blanks written out to the last one.
 
 ```yaml
 actions:
@@ -307,8 +308,8 @@ There is nothing else to send: a `date` in the `event_data` is not asked for,
 since asking for one is the Pro plan's to do.
 
 `vestaboard_show_holiday` is what puts one on the board. It reads what the
-fetch wrote down, picks one of the day's holidays at random, and lays the name
-out:
+fetch wrote down, picks one of the day's holidays -- at random among the ones
+it has not just shown -- and lays the name out:
 
 ```yaml
 alias: Vestaboard holiday
@@ -412,9 +413,11 @@ blanks, and a piece smaller than the board is centered on it.
 ### Categories
 
 A piece belongs to a category, and a random pick is made within one, so the
-board has as many rotations as you give it categories. `art` is the category a
-piece is in when it does not say otherwise, and `bedtime` is the other one
-shipped -- the quiet pieces, which the daytime rotation should not reach for:
+board has as many rotations as you give it categories -- each cycling on its
+own, since a bedtime piece does not use up a daytime piece's turn. `art` is
+the category a piece is in when it does not say otherwise, and `bedtime` is the
+other one shipped -- the quiet pieces, which the daytime rotation should not
+reach for:
 
 ```python
     "zzz": Piece("""
@@ -487,8 +490,10 @@ actions:
   - event: vestaboard_show_art
 ```
 
-That is a random `art` piece every half hour, never the same one twice in a
-row. A second automation, firing once at bedtime, is the other rotation:
+That is a random `art` piece every half hour, and one that works its way
+round: every rotation holds its last picks back, so nothing returns until half
+the others have been and nothing is ever the piece already up. A second
+automation, firing once at bedtime, is the other rotation:
 
 ```yaml
 alias: Vestaboard bedtime

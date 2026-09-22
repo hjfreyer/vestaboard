@@ -21,12 +21,12 @@ Delete button.
 from __future__ import annotations
 
 import logging
-import random
 import re
 from pathlib import Path
 from typing import NamedTuple
 
 from . import art, charcodes
+from .rotation import Rotation
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,7 +60,9 @@ class Capture(NamedTuple):
 class Library:
     def __init__(self, directory: Path) -> None:
         self.directory = directory
-        self._last_shown: str | None = None
+        # A rotation per category, keyed by the category's name, so the pieces
+        # shown at bedtime and the ones shown by day take their turns apart.
+        self._rotation = Rotation()
 
     def files(self) -> dict[str, Path]:
         """Every saved piece's file by name: the default category, then the rest.
@@ -130,11 +132,14 @@ class Library:
         pieces = self.pieces()
         if name is None:
             name = self._choose(pieces, category_asked_for(category))
-        elif name not in pieces:
-            known = ", ".join(sorted(pieces))
-            raise ValueError(f"no artwork named {name!r}; there is {known}")
+        else:
+            if name not in pieces:
+                known = ", ".join(sorted(pieces))
+                raise ValueError(f"no artwork named {name!r}; there is {known}")
+            # A piece asked for by name goes up like any other, so its own
+            # category's rotation should keep away from it for a while.
+            self._rotation.remember(name, pieces[name].category)
 
-        self._last_shown = name
         _LOGGER.info("showing %s", name)
         return art.to_grid(pieces[name].art)
 
@@ -188,7 +193,7 @@ class Library:
         _LOGGER.info("deleted %s", name)
 
     def _choose(self, pieces: dict[str, art.Piece], category: str) -> str:
-        """A piece at random from the category, never the one already up."""
+        """A piece at random from the category, keeping off the recent ones."""
         usable = []
         for name, piece in pieces.items():
             if piece.category != category:
@@ -210,10 +215,10 @@ class Library:
                 f"there is {', '.join(stocked)}"
             )
 
-        # Never twice in a row: a board that changes every half hour should
-        # look like it changed.
-        fresh = [name for name in usable if name != self._last_shown]
-        return random.choice(fresh or usable)
+        # The last half of the category is held back, so the board works its
+        # way through a category rather than dwelling on a couple of pieces --
+        # and never shows twice running what it has just shown.
+        return self._rotation.choose(usable, category)
 
     def _next_name(self) -> str:
         """One past the highest capture there has been, so names are not reused.

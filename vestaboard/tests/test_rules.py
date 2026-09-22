@@ -7,6 +7,18 @@ from vestaboard_ha import art, charcodes, rules
 from vestaboard_ha.checkiday import CheckidayError, Holiday, Listing
 from vestaboard_ha.holidays import HolidayStore
 from vestaboard_ha.library import Library
+from vestaboard_ha.rotation import Rotation
+
+
+@pytest.fixture(autouse=True)
+def rotations_start_empty(monkeypatch):
+    """Every test gets the hens and the holidays fresh.
+
+    Both rotations live in the module, which is what an app running for months
+    wants and what a test would otherwise inherit from whichever test ran last.
+    """
+    monkeypatch.setattr(rules, "_HENS", Rotation())
+    monkeypatch.setattr(rules, "_HOLIDAYS", Rotation())
 
 
 class FakeBoard:
@@ -212,6 +224,23 @@ async def test_the_hen_is_not_always_the_same_one(tmp_path):
     }
     assert len(drawn) > 1
     assert drawn <= {tuple(map(tuple, chips_of(hen))) for hen in rules.CHICKENS}
+
+
+@pytest.mark.asyncio
+async def test_the_hen_keeps_off_the_ones_lately_drawn(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    for _ in range(20):
+        await rules.eggs(ctx, {"today": 1, "mtd": 1, "ytd": 1})
+
+    drawn = [
+        tuple(tuple(row[: rules.LABEL_COL]) for row in grid) for grid in ctx.board.grids
+    ]
+    # Four hens hold the last two back, so no hen is back on the board until
+    # two others have had their turn.
+    held = len(rules.CHICKENS) // 2
+    for index, hen in enumerate(drawn[1:], start=1):
+        assert hen not in drawn[max(0, index - held) : index]
 
 
 def test_a_hen_can_carry_a_character_among_its_squares():
@@ -1036,6 +1065,28 @@ async def test_showing_a_holiday_puts_one_of_the_day_s_names_up(tmp_path):
         rules._down_the_middle(rules.holiday_lines(SPINACH.name)),
         rules._down_the_middle(rules.holiday_lines(CHICKEN.name)),
     )
+
+
+@pytest.mark.asyncio
+async def test_the_holiday_shown_keeps_off_the_ones_lately_shown(tmp_path):
+    day = [
+        Holiday(f"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeee{index}", name)
+        for index, name in enumerate(
+            ("Fresh Spinach Day", "National Chicken Month", "Pie Day", "Cat Day")
+        )
+    ]
+    ctx = FakeContext(tmp_path)
+    ctx.holidays.remember(date.today(), day)
+
+    for _ in range(20):
+        await rules.show_holiday(ctx, {})
+
+    shown = [tuple(lines) for lines in ctx.board.lines]
+    # Four holidays hold two back, so a day's names take their turns rather
+    # than one of them coming up two boards running.
+    for index, lines in enumerate(shown[1:], start=1):
+        assert lines not in shown[max(0, index - 2) : index]
+    assert len(set(shown)) == len(day)
 
 
 @pytest.mark.asyncio
