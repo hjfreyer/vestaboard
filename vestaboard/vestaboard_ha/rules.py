@@ -514,19 +514,24 @@ def _either(data: dict[str, Any], *keys: str) -> Any:
     return None
 
 
-def _forecast_date(raw: Any, today: date | None = None) -> date:
+def _date_asked_for(
+    raw: Any, today: date | None = None, *, rule: str = "forecast"
+) -> date:
     """The day the board is for: what the automation sent, or our own clock.
 
     A date sent as ``{{ now().date() }}`` or a forecast's own ``datetime`` is
     the automation being authoritative about the timezone, which it knows
     better than we do; with nothing sent we use the clock in the container,
     which Supervisor sets to the same timezone as Home Assistant.
+
+    ``rule`` only names the rule in the log, since more than one of them wants
+    a day and a board that came up for the wrong one should say which asked.
     """
     if raw is not None and str(raw).strip():
         try:
             return datetime.fromisoformat(str(raw).strip()).date()
         except ValueError:
-            _LOGGER.warning("forecast: %r is not a date, using today", raw)
+            _LOGGER.warning("%s: %r is not a date, using today", rule, raw)
     return today or date.today()
 
 
@@ -643,12 +648,12 @@ def condition_col(width: int) -> int:
 def forecast_grid(data: dict[str, Any], today: date | None = None) -> list[list[int]]:
     """The forecast board: the date, the day's weather, and its temperatures.
 
-    ``today`` is only there for the tests; the rule lets ``_forecast_date``
+    ``today`` is only there for the tests; the rule lets ``_date_asked_for``
     work out the day.
     """
     grid = charcodes.blank_grid()
 
-    when = _forecast_date(_either(data, "date", "datetime"), today)
+    when = _date_asked_for(_either(data, "date", "datetime"), today)
     for row, line in enumerate(_date_lines(when)):
         for col, char in enumerate(line):
             grid[row][DATE_COL + col] = charcodes.encode_char(char)
@@ -725,3 +730,84 @@ async def forecast(ctx: Context, data: dict[str, Any]) -> None:
     ``datetime`` a forecast entry carries.
     """
     await ctx.board.send_characters(forecast_grid(data))
+
+
+#: What an automation sends to make us ask Checkiday about a day all over
+#: again. A day is written down the first time we ask, and that is what stops
+#: an automation on a time pattern from spending the month's requests before
+#: lunchtime; this is the way to say that today has changed its mind.
+REFRESH_KEY = "refresh"
+
+
+def _flag(raw: Any) -> bool:
+    """A yes or a no from an automation, which may have templated it to a string.
+
+    Home Assistant renders a template to text before we ever see it, so a
+    ``true`` that started life as a boolean arrives as the word.
+    """
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+@on_action("fetch_holidays")
+async def fetch_holidays(ctx: Context, data: dict[str, Any]) -> None:
+    """Fire ``vestaboard_fetch_holidays`` to find out what today is a holiday for.
+
+    Checkiday knows several thousand of them, and this asks which fall today::
+
+        alias: Vestaboard holidays
+        triggers:
+          - trigger: time
+            at: "06:30:00"
+        actions:
+          - event: vestaboard_fetch_holidays
+
+    Nothing reaches the board: this is the fetching, and the names it writes
+    down are what a board is made out of later. What it writes is two caches
+    under the app's own storage -- a file per day holding that date's holiday
+    ids, and a file per holiday saying what an id means -- which is why a
+    holiday's name is only ever asked for once however often it comes round.
+
+    A day that is already written down is not fetched again, since every ask
+    is one of a monthly allowance, so firing this twice in a day costs nothing
+    and an automation is free to fire it on a time pattern. To go back and ask
+    anyway -- a holiday added to Checkiday during the day, most likely::
+
+        actions:
+          - event: vestaboard_fetch_holidays
+            event_data:
+              refresh: true
+
+    The day is ours unless the automation sends one, as ``date`` or as the
+    ``datetime`` a forecast entry carries, and it is read in the timezone the
+    container is in, which is Home Assistant's own.
+    """
+    day = _date_asked_for(_either(data, "date", "datetime"), rule="holidays")
+
+    known = ctx.holidays.ids_for(day)
+    if known is not None and not _flag(data.get(REFRESH_KEY)):
+        _LOGGER.info(
+            "holidays: %s is already fetched, with %d on it; not asking again",
+            day,
+            len(known),
+        )
+        return
+
+    if not ctx.checkiday.configured:
+        # Worth a word rather than an exception: an app with no key in its
+        # configuration is one this feature was never set up on.
+        _LOGGER.warning(
+            "holidays: no Checkiday API key configured, so there is nothing "
+            "to fetch for %s",
+            day,
+        )
+        return
+
+    found = await ctx.checkiday.holidays(day)
+    ctx.holidays.remember(day, found)
+    _LOGGER.info(
+        "holidays: %s is %s",
+        day,
+        ", ".join(holiday.name for holiday in found) or "no holiday at all",
+    )

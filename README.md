@@ -52,6 +52,8 @@ vestaboard/                the app; also the Docker build context
     registry.py            the @on_action decorator
     board.py               Vestaboard Cloud API client
     hass.py                Home Assistant websocket + REST client
+    checkiday.py           Checkiday API client: a date's holidays
+    holidays.py            the holidays on disk: a day's ids, and what they mean
     charcodes.py           character codes, for exact placement
     settings.py            app options, or env vars outside Home Assistant
   tests/
@@ -234,10 +236,68 @@ The date is the app's own, which is Home Assistant's timezone -- Supervisor
 sets the container's clock to it. Send a `date` in the `event_data` (an ISO
 date, or a forecast's own `datetime`) to say otherwise.
 
+`vestaboard_fetch_holidays` is the odd one out: it puts nothing on the board at
+all. It asks [Checkiday](https://www.checkiday.com/) which of its several
+thousand holidays fall today -- the national days, the awareness months, and
+the properly obscure ones -- and writes down what it hears, so that something
+later can make a board out of it.
+
+```yaml
+alias: Vestaboard holidays
+triggers:
+  - trigger: time
+    at: "06:30:00"
+actions:
+  - event: vestaboard_fetch_holidays
+```
+
+The key goes in `checkiday_api_key` on the app's **Configuration** tab; you
+make one in the [Checkiday API's](https://apilayer.com/marketplace/checkiday-api)
+own dashboard. Without one the rule says so in the log and leaves everything
+alone, which is what an install that does not want holidays looks like.
+
+What it writes is two caches under `/data/holidays`, which is the app's own
+storage and so survives restarts and updates:
+
+```
+/data/holidays/
+  days/2026-09-22.json      the ids of that date's holidays
+  events/676cd91e...json    what one id means: its name, its page, its length
+```
+
+They are two things because they go stale at completely different rates. A day
+is asked about once and written once -- firing the event again on a day already
+written costs nothing, which is what stops an automation on a time pattern from
+spending the month's requests before lunchtime -- while a holiday comes round
+every year, so its name is worth keeping for good and worth asking for once. A
+year of days is therefore a year of holidays whose names we already have.
+
+Both are plain JSON, so the lot can be read, corrected or thrown away with a
+text editor. A file that will not parse counts as one that is not there, which
+means the next fetch simply fills it in again.
+
+To go back and ask about a day already written -- a holiday added to Checkiday
+during the day, most likely:
+
+```yaml
+actions:
+  - event: vestaboard_fetch_holidays
+    event_data:
+      refresh: true
+```
+
+The day is the app's own unless the automation sends one, as `date` or as the
+`datetime` a forecast entry carries. Checkiday is told which timezone that day
+is in, so today means the same thing at both ends.
+
 `ctx.board` sends to the board, `ctx.hass` reads state and calls services, and
 `ctx.art` is the art library: `ctx.art.grid("rainbow")` for a named piece,
 `ctx.art.grid()` for a random one from the `art` category, and
 `ctx.art.grid(category="bedtime")` for a random one from another.
+`ctx.checkiday` asks Checkiday about a date, and `ctx.holidays` is where the
+answers are kept: `ctx.holidays.holidays_for(day)` for a day's holidays with
+their names on, and `ctx.holidays.ids_for(day)` to tell a day with nothing on
+it from a day nobody has asked about yet.
 
 ## Pixel art
 
@@ -397,4 +457,5 @@ DRY_RUN=true HASS_URL=http://homeassistant.local:8123 HASS_TOKEN=... \
 ```
 
 `HASS_TOKEN` is a long-lived access token from your Home Assistant profile
-page. Inside the app none of this is needed.
+page, and `CHECKIDAY_API_KEY` is the holiday key outside the app store, the way
+`VESTABOARD_API_TOKEN` is the board's. Inside the app none of this is needed.

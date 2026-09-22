@@ -21,6 +21,7 @@ from pathlib import Path
 DATA_DIR = Path("/data")
 OPTIONS_PATH = DATA_DIR / "options.json"
 DEFAULT_ART_DIR = DATA_DIR / "art"
+DEFAULT_HOLIDAYS_DIR = DATA_DIR / "holidays"
 
 # Supervisor proxies the Home Assistant API for apps that ask for it.
 SUPERVISOR_REST = "http://supervisor/core/api"
@@ -30,6 +31,12 @@ SUPERVISOR_WS = "ws://supervisor/core/websocket"
 # port named as ``ingress_port`` in config.yaml, so the two have to agree.
 DEFAULT_WEB_PORT = 8099
 
+#: Where the container is told what timezone it is in. Supervisor sets this to
+#: Home Assistant's own, and docker-compose passes it through, so it is the
+#: same answer the clock gives -- which is what makes "today" mean one thing
+#: here and at Checkiday both.
+TIMEZONE_PATH = Path("/etc/timezone")
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -37,14 +44,21 @@ class Settings:
     rest_url: str
     ws_url: str
     hass_token: str
+    checkiday_api_key: str = ""
     log_level: str = "info"
     dry_run: bool = False
     web_port: int = DEFAULT_WEB_PORT
     art_dir: Path = DEFAULT_ART_DIR
+    holidays_dir: Path = DEFAULT_HOLIDAYS_DIR
+    timezone: str = ""
 
     @property
     def has_hass(self) -> bool:
         return bool(self.hass_token)
+
+    @property
+    def has_checkiday(self) -> bool:
+        return bool(self.checkiday_api_key)
 
 
 def _load_options() -> dict:
@@ -66,6 +80,23 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _timezone() -> str:
+    """Which timezone we are in, named the way Checkiday wants it.
+
+    ``TZ`` is what docker-compose sets and what Supervisor puts in the
+    container; ``/etc/timezone`` is where the same answer ends up on a Debian
+    base. Nothing at all is not worth guessing at -- an empty answer leaves the
+    timezone out of the request, and Checkiday falls back to its own.
+    """
+    named = os.environ.get("TZ", "").strip()
+    if named:
+        return named
+    try:
+        return TIMEZONE_PATH.read_text().strip()
+    except OSError:
+        return ""
+
+
 def load() -> Settings:
     options = _load_options()
 
@@ -83,6 +114,9 @@ def load() -> Settings:
 
     return Settings(
         api_token=os.environ.get("VESTABOARD_API_TOKEN", options.get("api_token", "")),
+        checkiday_api_key=os.environ.get(
+            "CHECKIDAY_API_KEY", options.get("checkiday_api_key", "")
+        ),
         rest_url=rest_url,
         ws_url=ws_url,
         hass_token=hass_token,
@@ -90,4 +124,6 @@ def load() -> Settings:
         dry_run=_env_bool("DRY_RUN", bool(options.get("dry_run", False))),
         web_port=_env_int("WEB_PORT", DEFAULT_WEB_PORT),
         art_dir=Path(os.environ.get("ART_DIR") or DEFAULT_ART_DIR),
+        holidays_dir=Path(os.environ.get("HOLIDAYS_DIR") or DEFAULT_HOLIDAYS_DIR),
+        timezone=_timezone(),
     )

@@ -79,3 +79,60 @@ def test_the_manifest_proxies_the_port_the_gallery_listens_on():
 
     assert re.search(r"^ingress:\s*true", manifest, re.M)
     assert port and int(port.group(1)) == settings_module.DEFAULT_WEB_PORT
+
+
+def test_the_checkiday_key_comes_from_the_options_or_the_environment(
+    tmp_path, monkeypatch
+):
+    options = tmp_path / "options.json"
+    options.write_text(json.dumps({"checkiday_api_key": "from-options"}))
+    monkeypatch.setattr(settings_module, "OPTIONS_PATH", options)
+    monkeypatch.delenv("CHECKIDAY_API_KEY", raising=False)
+
+    settings = settings_module.load()
+    assert settings.checkiday_api_key == "from-options"
+    assert settings.has_checkiday
+
+    monkeypatch.setenv("CHECKIDAY_API_KEY", "from-env")
+    assert settings_module.load().checkiday_api_key == "from-env"
+
+
+def test_no_checkiday_key_is_a_holiday_fetch_that_will_not_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings_module, "OPTIONS_PATH", tmp_path / "missing.json")
+    monkeypatch.delenv("CHECKIDAY_API_KEY", raising=False)
+
+    assert not settings_module.load().has_checkiday
+
+
+def test_the_holidays_live_in_the_app_storage_beside_the_art(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings_module, "OPTIONS_PATH", tmp_path / "missing.json")
+    monkeypatch.delenv("HOLIDAYS_DIR", raising=False)
+
+    assert settings_module.load().holidays_dir == settings_module.DATA_DIR / "holidays"
+
+    monkeypatch.setenv("HOLIDAYS_DIR", "/somewhere/else")
+    assert settings_module.load().holidays_dir == Path("/somewhere/else")
+
+
+def test_the_timezone_is_the_one_the_container_is_in(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings_module, "OPTIONS_PATH", tmp_path / "missing.json")
+    named = tmp_path / "timezone"
+    named.write_text("America/Chicago\n")
+    monkeypatch.setattr(settings_module, "TIMEZONE_PATH", named)
+
+    monkeypatch.setenv("TZ", "America/Los_Angeles")
+    assert settings_module.load().timezone == "America/Los_Angeles"
+
+    # Supervisor sets the container's clock without always setting TZ.
+    monkeypatch.delenv("TZ")
+    assert settings_module.load().timezone == "America/Chicago"
+
+
+def test_a_timezone_we_cannot_name_is_left_for_checkiday_to_guess(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(settings_module, "OPTIONS_PATH", tmp_path / "missing.json")
+    monkeypatch.setattr(settings_module, "TIMEZONE_PATH", tmp_path / "missing")
+    monkeypatch.delenv("TZ", raising=False)
+
+    assert settings_module.load().timezone == ""
