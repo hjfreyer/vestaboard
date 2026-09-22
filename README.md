@@ -253,8 +253,11 @@ actions:
 
 The key goes in `checkiday_api_key` on the app's **Configuration** tab; you
 make one in the [Checkiday API's](https://apilayer.com/marketplace/checkiday-api)
-own dashboard. Without one the rule says so in the log and leaves everything
+own dashboard. Without one the rule says so at startup and leaves everything
 alone, which is what an install that does not want holidays looks like.
+
+A free key is a hundred requests a month, which is the whole reason for the
+caches below: one ask a day is thirty of them, and everything else is margin.
 
 What it writes is two caches under `/data/holidays`, which is the app's own
 storage and so survives restarts and updates:
@@ -285,6 +288,11 @@ actions:
     event_data:
       refresh: true
 ```
+
+An ask that goes wrong spends a request the same as one that works, so a day
+that has failed three times is left until tomorrow rather than retried all
+afternoon. The log says when that happens, and `refresh: true` tries it anyway
+-- which is the thing to fire once you have fixed whatever was wrong.
 
 The day is the app's own unless the automation sends one, as `date` or as the
 `datetime` a forecast entry carries. Checkiday is told which timezone that day

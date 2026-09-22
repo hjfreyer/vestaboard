@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from vestaboard_ha import art, charcodes, rules
-from vestaboard_ha.checkiday import Holiday
+from vestaboard_ha.checkiday import CheckidayError, Holiday
 from vestaboard_ha.holidays import HolidayStore
 from vestaboard_ha.library import Library
 
@@ -23,13 +23,16 @@ class FakeBoard:
 class FakeCheckiday:
     """Checkiday without the asking: what it would say, and what it was asked."""
 
-    def __init__(self, giving=(), *, configured=True):
+    def __init__(self, giving=(), *, configured=True, raising=None):
         self.giving = list(giving)
         self.configured = configured
+        self.raising = raising
         self.asked = []
 
     async def holidays(self, day=None, *, adult=False):
         self.asked.append(day)
+        if self.raising is not None:
+            raise self.raising
         return list(self.giving)
 
 
@@ -828,3 +831,61 @@ def test_an_automation_s_yes_survives_being_templated_to_a_string():
     assert not rules._flag(False)
     assert not rules._flag("")
     assert not rules._flag(None)
+
+
+@pytest.mark.asyncio
+async def test_an_ask_that_went_wrong_is_counted_and_still_raised(tmp_path):
+    checkiday = FakeCheckiday(raising=CheckidayError("the month is spent"))
+    ctx = FakeContext(tmp_path, checkiday)
+
+    with pytest.raises(CheckidayError):
+        await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+
+    assert ctx.holidays.attempts_for(date(2026, 9, 22)) == 1
+    # Still a day worth asking about, just not one we have an answer for.
+    assert ctx.holidays.ids_for(date(2026, 9, 22)) is None
+
+
+@pytest.mark.asyncio
+async def test_a_day_that_keeps_going_wrong_is_left_until_tomorrow(tmp_path, caplog):
+    checkiday = FakeCheckiday(raising=CheckidayError("the month is spent"))
+    ctx = FakeContext(tmp_path, checkiday)
+
+    for _ in range(rules.MAX_ATTEMPTS):
+        with pytest.raises(CheckidayError):
+            await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+
+    await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+
+    assert len(checkiday.asked) == rules.MAX_ATTEMPTS
+    assert "left until tomorrow" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_refresh_tries_a_given_up_day_anyway(tmp_path):
+    checkiday = FakeCheckiday(raising=CheckidayError("the month is spent"))
+    ctx = FakeContext(tmp_path, checkiday)
+    for _ in range(rules.MAX_ATTEMPTS):
+        with pytest.raises(CheckidayError):
+            await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+
+    checkiday.raising = None
+    checkiday.giving = [SPINACH]
+    await rules.fetch_holidays(ctx, {"date": "2026-09-22", "refresh": True})
+
+    assert ctx.holidays.ids_for(date(2026, 9, 22)) == [SPINACH.id]
+    # A day that answered starts again with a clean slate.
+    assert ctx.holidays.attempts_for(date(2026, 9, 22)) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_refresh_that_fails_keeps_the_holidays_the_day_already_had(tmp_path):
+    checkiday = FakeCheckiday([SPINACH])
+    ctx = FakeContext(tmp_path, checkiday)
+    await rules.fetch_holidays(ctx, {"date": "2026-09-22"})
+
+    checkiday.raising = CheckidayError("the month is spent")
+    with pytest.raises(CheckidayError):
+        await rules.fetch_holidays(ctx, {"date": "2026-09-22", "refresh": True})
+
+    assert ctx.holidays.holidays_for(date(2026, 9, 22)) == [SPINACH]
