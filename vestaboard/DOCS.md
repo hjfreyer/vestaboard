@@ -65,8 +65,9 @@ actions:
 ```
 
 Leave out `event_data` and the app picks at random from the `art` category,
-never repeating the piece already on the board. To pick within another
-category -- the board winding down for the night, on its own automation:
+keeping off the pieces it has lately shown so the board works its way round
+rather than repeating itself. To pick within another category -- the board
+winding down for the night, on its own automation:
 
 ```yaml
 alias: Vestaboard bedtime
@@ -283,7 +284,8 @@ automation in the morning, when that is the same day it is here.
 ## Showing a holiday
 
 `vestaboard_show_holiday` puts one of the day's holidays on the board, picked
-at random from whatever `vestaboard_fetch_holidays` wrote down.
+at random from whatever `vestaboard_fetch_holidays` wrote down -- among the
+ones it has not just shown, so a day of several takes them in turn.
 
 ```yaml
 alias: Vestaboard holiday

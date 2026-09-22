@@ -7,6 +7,16 @@ RED_ROW = "🟥" * charcodes.COLS
 A_PIECE = f"{RED_ROW}\n\n\n"
 ANOTHER_PIECE = f"{'🟦' * charcodes.COLS}\n\n\n"
 
+#: A piece per color, so a run of picks can be read back as the names it was.
+PIECES = {
+    name: f"{square * charcodes.COLS}\n\n\n"
+    for name, square in zip(
+        ("red", "orange", "yellow", "green", "blue", "violet"),
+        ("🟥", "🟧", "🟨", "🟩", "🟦", "🟪"),
+        strict=True,
+    )
+}
+
 
 @pytest.fixture
 def library(tmp_path):
@@ -62,6 +72,24 @@ def test_an_unknown_name_is_rejected(library):
         library.grid("nonesuch")
 
 
+def stock(library, monkeypatch, names, category=None):
+    """Save a piece per name and let the library have nothing else."""
+    monkeypatch.setattr(art, "ARTWORKS", {})
+    for name in names:
+        write(library, name, PIECES[name], category)
+
+
+def shown(library, times, category=None):
+    """Which pieces a run of random picks put up, in order."""
+    grids = {name: art.to_grid(piece) for name, piece in PIECES.items()}
+    seen = []
+    for _ in range(times):
+        grid = library.grid(category=category)
+        [name] = [name for name, drawn in grids.items() if drawn == grid]
+        seen.append(name)
+    return seen
+
+
 def test_a_random_piece_is_never_the_one_already_up(library, monkeypatch):
     monkeypatch.setattr(art, "ARTWORKS", {})
     write(library, "one", A_PIECE)
@@ -71,6 +99,46 @@ def test_a_random_piece_is_never_the_one_already_up(library, monkeypatch):
 
     assert all(a != b for a, b in zip(seen[:-1], seen[1:], strict=True))
     assert len({tuple(map(tuple, grid)) for grid in seen}) == 2
+
+
+def test_a_random_piece_keeps_off_the_last_half_of_its_category(
+    library, monkeypatch
+):
+    stock(library, monkeypatch, ["red", "orange", "yellow", "green", "blue", "violet"])
+
+    seen = shown(library, 30)
+
+    # Six pieces hold three back, so the board works its way round rather than
+    # coming back to one it has just shown.
+    for index, name in enumerate(seen[1:], start=1):
+        assert name not in seen[max(0, index - 3) : index]
+    assert set(seen) == set(PIECES)
+
+
+def test_a_piece_asked_for_by_name_is_held_back_from_the_picks_after_it(
+    library, monkeypatch
+):
+    stock(library, monkeypatch, ["red", "orange"])
+
+    library.grid("red")
+
+    # It is what is on the board, whoever chose it, so a pick right after it
+    # should look like a change.
+    assert shown(library, 1) == ["orange"]
+
+
+def test_a_category_cycles_without_the_other_categories_using_up_its_turns(
+    library, monkeypatch
+):
+    stock(library, monkeypatch, ["red", "orange"])
+    write(library, "green", PIECES["green"], "bedtime")
+    write(library, "blue", PIECES["blue"], "bedtime")
+
+    first = shown(library, 1)
+    shown(library, 4, "bedtime")
+
+    # A night of bedtime pieces is not what the daytime rotation remembers.
+    assert shown(library, 1) != first
 
 
 def test_a_broken_file_is_left_out_of_the_rotation(library, monkeypatch, caplog):
