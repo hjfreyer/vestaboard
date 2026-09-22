@@ -171,9 +171,13 @@ class Checkiday:
             ) from exc
 
         if status >= 400:
-            # The API puts its complaint under ``error``; without one, the
-            # status is all there is to go on.
-            said = payload.get("error") if isinstance(payload, Mapping) else None
+            # Checkiday puts its complaint under ``error``, and the gateway in
+            # front of it says ``message`` instead -- which is what a missing
+            # or a wrong key comes back as, so it is the one most likely to be
+            # read. Without either, the status is all there is to go on.
+            said = ""
+            if isinstance(payload, Mapping):
+                said = payload.get("error") or payload.get("message") or ""
             raise CheckidayError(f"HTTP {status} from Checkiday: {said or body[:200]}")
 
         if remaining is not None:

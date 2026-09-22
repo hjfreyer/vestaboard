@@ -25,6 +25,7 @@ from typing import Any
 
 from . import art, charcodes
 from .app import Context
+from .checkiday import CheckidayError
 from .registry import on_action
 
 _LOGGER = logging.getLogger(__name__)
@@ -738,6 +739,13 @@ async def forecast(ctx: Context, data: dict[str, Any]) -> None:
 #: lunchtime; this is the way to say that today has changed its mind.
 REFRESH_KEY = "refresh"
 
+#: How many times a day is asked about before it is left until tomorrow. A
+#: failed ask spends one of the key's monthly allowance the same as a good one,
+#: and the free allowance is a hundred, so an automation on a time pattern and
+#: an API having a bad morning could between them spend the month by lunchtime.
+#: Three is enough to ride out a blip and few enough to notice in the log.
+MAX_ATTEMPTS = 3
+
 
 def _flag(raw: Any) -> bool:
     """A yes or a no from an automation, which may have templated it to a string.
@@ -784,9 +792,10 @@ async def fetch_holidays(ctx: Context, data: dict[str, Any]) -> None:
     container is in, which is Home Assistant's own.
     """
     day = _date_asked_for(_either(data, "date", "datetime"), rule="holidays")
+    anyway = _flag(data.get(REFRESH_KEY))
 
     known = ctx.holidays.ids_for(day)
-    if known is not None and not _flag(data.get(REFRESH_KEY)):
+    if known is not None and not anyway:
         _LOGGER.info(
             "holidays: %s is already fetched, with %d on it; not asking again",
             day,
@@ -804,7 +813,24 @@ async def fetch_holidays(ctx: Context, data: dict[str, Any]) -> None:
         )
         return
 
-    found = await ctx.checkiday.holidays(day)
+    attempts = ctx.holidays.attempts_for(day)
+    if attempts >= MAX_ATTEMPTS and not anyway:
+        _LOGGER.warning(
+            "holidays: asking about %s has gone wrong %d times, so it is being "
+            "left until tomorrow; fire this with refresh: true to try anyway",
+            day,
+            attempts,
+        )
+        return
+
+    try:
+        found = await ctx.checkiday.holidays(day)
+    except CheckidayError:
+        # A request spent for nothing. Worth writing down, since it is the
+        # count of them that stops us spending the rest of the month too.
+        ctx.holidays.note_attempt(day)
+        raise
+
     ctx.holidays.remember(day, found)
     _LOGGER.info(
         "holidays: %s is %s",

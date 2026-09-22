@@ -189,3 +189,13 @@ def test_a_listing_with_no_lists_in_it_is_an_error():
 
 def test_a_day_with_nothing_on_it_is_no_holidays_rather_than_an_error():
     assert holidays_in(a_listing()) == []
+
+
+@pytest.mark.asyncio
+async def test_a_key_the_gateway_will_not_take_says_why():
+    # The gateway in front of Checkiday says "message" where Checkiday itself
+    # says "error", and a missing or wrong key is what comes back that way.
+    session = FakeSession({"message": "Invalid authentication credentials"}, status=401)
+
+    with pytest.raises(CheckidayError, match="Invalid authentication credentials"):
+        await Checkiday("wrong", session).holidays(A_DAY)

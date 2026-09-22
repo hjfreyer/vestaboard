@@ -70,6 +70,12 @@ def _read(path: Path) -> dict[str, Any] | None:
     return payload
 
 
+def _attempts(payload: dict[str, Any] | None) -> int:
+    """How many failed asks a day's file records, and none for anything odd."""
+    attempts = (payload or {}).get("attempts")
+    return attempts if isinstance(attempts, int) and attempts > 0 else 0
+
+
 def _write(path: Path, payload: dict[str, Any]) -> None:
     """Write one file of the store, all of it or none of it.
 
@@ -126,6 +132,35 @@ class HolidayStore:
             _LOGGER.warning("%s has no list of ids in it", self.day_path(day))
             return None
         return [str(event_id) for event_id in ids]
+
+    def attempts_for(self, day: date) -> int:
+        """How many times we have asked about a day and come away with nothing.
+
+        A day that answered is back to none of them: ``remember`` writes the
+        day out fresh, and a day whose holidays we know is not asked again.
+        """
+        return _attempts(_read(self.day_path(day)))
+
+    def note_attempt(self, day: date) -> int:
+        """Write down that we asked about a day and it did not go well.
+
+        Every ask spends one of the key's monthly allowance whether or not it
+        came back with anything, and the free allowance is a hundred -- so an
+        automation on a time pattern and an API having a bad morning could
+        between them spend the month before lunch. Counting the failures is
+        what lets a rule give up until tomorrow.
+
+        Whatever the day already said is kept, so that a refresh that fails
+        does not cost us the holidays the day already had.
+        """
+        payload = _read(self.day_path(day)) or {}
+        payload["date"] = day.isoformat()
+        payload["attempts"] = _attempts(payload) + 1
+        # The clock, not the date: which day it was is in the file name, and
+        # what is wanted here is when we last bothered them.
+        payload["tried"] = datetime.now().isoformat(timespec="seconds")
+        _write(self.day_path(day), payload)
+        return payload["attempts"]
 
     def holiday(self, event_id: str) -> Holiday | None:
         """What one id means, or None if the store has never been told."""

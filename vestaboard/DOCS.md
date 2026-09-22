@@ -248,7 +248,8 @@ actions:
 
 It needs a `checkiday_api_key` on the **Configuration** tab above. Without one
 it says so in the log and leaves everything alone, so an install that does not
-want holidays can leave the option empty.
+want holidays can leave the option empty. A free key is a hundred requests a
+month, which is why the day is only ever looked up once.
 
 What it keeps is two sets of files under `/data/holidays`, which is the app's
 own storage and survives restarts and updates: one file per day, holding the
@@ -266,6 +267,11 @@ actions:
     event_data:
       refresh: true
 ```
+
+A look-up that goes wrong spends a request the same as one that works, so a day
+that has failed three times is left until tomorrow instead of being retried all
+afternoon. `refresh: true` is also how you try again once whatever was wrong is
+fixed.
 
 Today is the app's own day unless the automation sends a `date`, and it is read
 in your Home Assistant's timezone, which Checkiday is told about too.

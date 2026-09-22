@@ -133,3 +133,34 @@ def test_nothing_is_left_half_written(tmp_path):
     store.remember(A_DAY, [SPINACH])
 
     assert list(tmp_path.rglob("*.writing")) == []
+
+
+def test_an_ask_that_came_to_nothing_is_counted(tmp_path):
+    store = HolidayStore(tmp_path)
+
+    assert store.attempts_for(A_DAY) == 0
+    assert store.note_attempt(A_DAY) == 1
+    assert store.note_attempt(A_DAY) == 2
+    assert store.attempts_for(A_DAY) == 2
+    # Counting the asks is not the same as having an answer.
+    assert store.ids_for(A_DAY) is None
+
+
+def test_counting_a_failure_does_not_lose_a_day_we_already_had(tmp_path):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [SPINACH])
+
+    store.note_attempt(A_DAY)
+
+    assert store.ids_for(A_DAY) == [SPINACH.id]
+    assert store.attempts_for(A_DAY) == 1
+
+
+def test_a_day_that_answers_starts_counting_again(tmp_path):
+    store = HolidayStore(tmp_path)
+    store.note_attempt(A_DAY)
+    store.note_attempt(A_DAY)
+
+    store.remember(A_DAY, [SPINACH])
+
+    assert store.attempts_for(A_DAY) == 0
