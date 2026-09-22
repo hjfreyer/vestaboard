@@ -327,15 +327,15 @@ leave the board showing whatever it had.
 Fifteen chips across and three down is not much room for a name like
 International Day for the Preservation of the Ozone Layer, so a name that will
 not go on is shortened a step at a time, and no further than it has to be.
-First the scope is written short -- `NATIONAL` becomes `NAT'L` and
-`INTERNATIONAL` becomes `INT'L` -- then it is dropped altogether, and only if
+First the scope is written short -- `NATIONAL`, `INTERNATIONAL` and `WORLD`
+become `NATL`, `INTL` and `WRLD` -- then it is dropped altogether, and only if
 it still will not go are the words that are left over replaced with dots:
 
 ```
 National Chicken Month           NATIONAL
                                  CHICKEN MONTH
 
-International Day of Persons     INT'L DAY OF
+International Day of Persons     INTL DAY OF
 with Disabilities                PERSONS WITH
                                  DISABILITIES
 
@@ -348,9 +348,8 @@ Total Elimination of Nuclear     TOTAL
 Weapons                          ELIMINATION...
 ```
 
-`WORLD` is already as short as it goes, so it comes through the first step
-unchanged and goes at the second. A holiday whose whole name is its scope keeps
-it, since a blank board is worse than one that overreaches. Names are wrapped
+A holiday whose whole name is its scope keeps it, since a blank board is worse
+than one that overreaches. Names are wrapped
 at the spaces and nowhere else, and the one word too long for a row on its own
 is cut where it runs out.
 

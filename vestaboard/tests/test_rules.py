@@ -946,12 +946,12 @@ def test_a_name_that_fits_is_left_alone():
 
 def test_a_name_that_does_not_fit_gives_up_its_scope_a_bit_at_a_time():
     # Long enough that the name as written will not go on, but short enough
-    # that writing INTERNATIONAL as INT'L is all it takes.
+    # that writing INTERNATIONAL as INTL is all it takes.
     name = "International Day of Persons with Disabilities"
 
     assert rules._lines(rules.sayable(name).split()) is None
     assert rules.holiday_lines(name) == [
-        "INT'L DAY OF",
+        "INTL DAY OF",
         "PERSONS WITH",
         "DISABILITIES",
     ]
@@ -982,8 +982,24 @@ def test_one_word_longer_than_the_board_is_cut_where_it_runs_out():
 
 
 def test_a_holiday_that_is_only_its_scope_keeps_it():
-    # Dropping the scope would leave an empty board, which is worse.
+    # Dropping the scope would leave an empty board, which is worse. The name
+    # fits as written, so the guard is worth pinning where it actually lives.
+    assert rules._unscoped(["WORLD"]) == ["WORLD"]
+    assert rules._unscoped(["NATIONAL", "INTERNATIONAL"]) == [
+        "NATIONAL",
+        "INTERNATIONAL",
+    ]
+    assert rules._unscoped(["WORLD", "TURTLE", "DAY"]) == ["TURTLE", "DAY"]
     assert rules.holiday_lines("World") == ["WORLD"]
+
+
+def test_each_scope_word_has_a_shorter_spelling():
+    assert rules._shortened(["NATIONAL", "CHICKEN"]) == ["NATL", "CHICKEN"]
+    assert rules._shortened(["INTERNATIONAL"]) == ["INTL"]
+    assert rules._shortened(["WORLD"]) == ["WRLD"]
+    # Every one of them is shorter than what it replaces, or the step is a
+    # waste of a rung on the ladder.
+    assert all(len(short) < len(word) for word, short in rules.SCOPE_SHORT.items())
 
 
 def test_a_name_with_nothing_sayable_in_it_is_an_error():

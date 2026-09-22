@@ -301,14 +301,14 @@ look-up automation above running first.
 
 The board is three rows of fifteen, which many holidays do not fit in. A name
 that will not go on is shortened a step at a time and no further than it must
-be: `NATIONAL` becomes `NAT'L` and `INTERNATIONAL` becomes `INT'L`, then the
-scope is dropped altogether, and only after that are the leftover words
-replaced with dots.
+be: `NATIONAL`, `INTERNATIONAL` and `WORLD` become `NATL`, `INTL` and `WRLD`,
+then the scope is dropped altogether, and only after that are the leftover
+words replaced with dots.
 
 | The holiday | What the board says |
 | --- | --- |
 | National Chicken Month | NATIONAL / CHICKEN MONTH |
-| International Day of Persons with Disabilities | INT'L DAY OF / PERSONS WITH / DISABILITIES |
+| International Day of Persons with Disabilities | INTL DAY OF / PERSONS WITH / DISABILITIES |
 | International Day for the Preservation of the Ozone Layer | DAY FOR THE / PRESERVATION OF / THE OZONE LAYER |
 | International Day for the Total Elimination of Nuclear Weapons | DAY FOR THE / TOTAL / ELIMINATION... |
 
