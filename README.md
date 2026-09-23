@@ -309,7 +309,7 @@ since asking for one is the Pro plan's to do.
 
 `vestaboard_show_holiday` is what puts one on the board. It reads what the
 fetch wrote down, picks one of the day's holidays -- at random among the ones
-it has not just shown -- and lays the name out:
+it has not just shown -- and lays the name out behind something daft:
 
 ```yaml
 alias: Vestaboard holiday
@@ -325,19 +325,25 @@ like: it only ever reads the day the fetch already paid for. A day nobody
 fetched, and a day that turned out to hold no holidays, are both logged and
 leave the board showing whatever it had.
 
+The daft part is one of the `CHEERS` in `rules.py` -- `HAPPY`, `IT'S`,
+`WOWEE!`, `OH BOY IT'S`, `GET READY FOR` and a few more -- on a rotation of its
+own, so the board is pleased in a different way each time. Add another there
+and it joins in.
+
 Fifteen chips across and three down is not much room for a name like
-International Day for the Preservation of the Ozone Layer, so a name that will
-not go on is shortened a step at a time, and no further than it has to be.
-First the scope is written short -- `NATIONAL`, `INTERNATIONAL` and `WORLD`
-become `NATL`, `INTL` and `WRLD` -- then it is dropped altogether, and only if
-it still will not go are the words that are left over replaced with dots:
+International Day for the Preservation of the Ozone Layer, let alone a cheer in
+front of it, so a name that will not go on is shortened a step at a time and no
+further than it has to be. First the scope is written short -- `NATIONAL`,
+`INTERNATIONAL` and `WORLD` become `NATL`, `INTL` and `WRLD` -- then it is
+dropped altogether, and only if it still will not go are the words left over
+replaced with dots:
 
 ```
-National Chicken Month           NATIONAL
+National Chicken Month           WOWEE! NATIONAL
                                  CHICKEN MONTH
 
-International Day of Persons     INTL DAY OF
-with Disabilities                PERSONS WITH
+International Day of Persons     IT'S INTL DAY
+with Disabilities                OF PERSONS WITH
                                  DISABILITIES
 
 International Day for the        DAY FOR THE
@@ -348,6 +354,15 @@ International Day for the        DAY FOR THE
 Total Elimination of Nuclear     TOTAL
 Weapons                          ELIMINATION...
 ```
+
+The cheer outranks the scope, which is why the second of those keeps both
+rather than spelling `INTERNATIONAL` out and going uncheered: the scope is the
+part nobody needs, and being pleased is the point. Which cheer is picked from
+whichever of them will actually go on beside that much of the name, so a name
+with the board nearly to itself gets a short one rather than none -- and a name
+with no room for even the shortest, like the last two above, takes the board on
+its own. Dots never come with a cheer, since cutting the holiday's own words to
+make room to be pleased about it is not a trade worth making.
 
 A holiday whose whole name is its scope keeps it, since a blank board is worse
 than one that overreaches. Names are wrapped

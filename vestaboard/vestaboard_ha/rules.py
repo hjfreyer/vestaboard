@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import math
 import unicodedata
+from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any
 
@@ -31,11 +32,12 @@ from .rotation import Rotation
 
 _LOGGER = logging.getLogger(__name__)
 
-#: The hens' rotation and the holidays', each holding its last few picks back
+#: The hens' rotation, the holidays' and the cheers', each holding its picks
 #: so neither comes up the same two boards running. They are the app's memory
 #: of what it has shown and nothing more, so a restart starts them over.
 _HENS = Rotation()
 _HOLIDAYS = Rotation()
+_CHEERS = Rotation()
 
 
 @on_action("show_art")
@@ -878,6 +880,24 @@ SCOPE_SHORT = {
 #: flap for one, so it is three full stops and takes three chips.
 ELLIPSIS = "..."
 
+#: Something daft to put in front of the holiday, because a board that only
+#: names the day reads like a calendar. Every one of these that will go on is
+#: offered to the rotation, so a board is pleased in a different way each time
+#: and a long name gets a short cheer rather than none.
+CHEERS = (
+    "IT'S",
+    "HAPPY",
+    "WOWEE!",
+    "TODAY IS",
+    "AT LAST!",
+    "CELEBRATE",
+    "YIPPEE FOR",
+    "HOORAY FOR",
+    "OH BOY IT'S",
+    "DON'T FORGET",
+    "GET READY FOR",
+)
+
 #: Spellings the board has no flap for, and what to write instead. Checkiday
 #: writes for a web page -- curly quotes, en dashes, the odd accent -- and the
 #: board has none of that.
@@ -965,13 +985,28 @@ def _ellipsized(words: list[str]) -> list[str]:
     return [words[0][:room] + ELLIPSIS]
 
 
-def holiday_lines(name: str) -> list[str]:
-    """One holiday's name laid out on the board, shortened until it goes on.
+def holiday_lines(name: str, cheers: Sequence[str] | None = None) -> list[str]:
+    """One holiday, cheered and laid out, shortened until it goes on the board.
 
-    Four goes at it, each giving up a little more than the last: the name as it
-    is, then the scope written short, then the scope dropped, and then dots for
-    whatever is left over. Most of a long holiday's name is its scope, so it is
-    rare to get past the third.
+    Three ways of writing the name, each giving up a little more than the last:
+    as it is, with the scope written short, and with the scope gone. Every one
+    of them is offered a cheer before any of them is tried without one, because
+    the cheer is the point of the board and the scope is the part nobody needs
+    -- a HAPPY NATL CHICKEN MONTH beats a NATIONAL CHICKEN MONTH.
+
+    Which cheer is the rotation's to say, among the ones that will actually go
+    on beside that much of the name. So a name with the board nearly to itself
+    gets one of the short ones rather than none, and a name with room to spare
+    can have any of them.
+
+    A name too long to host even the shortest cheer takes the board on its own,
+    and a name too long for that gets dots -- never dots and a cheer, since
+    cutting the holiday's own words to make room to be pleased about it is not
+    a trade worth making.
+
+    ``cheers`` is what to choose from; None, which is what the rule passes,
+    is all of CHEERS. The tests are the only caller that names them: one of
+    them to ask for that one, and none at all for a board without a cheer.
 
     The scope is dropped from the name as it was written rather than from the
     shortened one, since ``NATL`` is no longer the word being looked for.
@@ -980,8 +1015,23 @@ def holiday_lines(name: str) -> list[str]:
     if not words:
         raise ValueError(f"{name!r} has nothing in it the board can show")
 
-    for attempt in (words, _shortened(words), _unscoped(words)):
-        lines = _lines(attempt)
+    pool = CHEERS if cheers is None else cheers
+    forms = (words, _shortened(words), _unscoped(words))
+
+    for form in forms:
+        # Every cheer that goes on in front of this much of the name, so that
+        # the rotation chooses among what fits rather than being told.
+        fitting: dict[str, list[str]] = {}
+        for cheer in pool:
+            lines = _lines([*sayable(cheer).split(), *form])
+            if lines is not None:
+                fitting[cheer] = lines
+        if fitting:
+            return fitting[_CHEERS.choose(list(fitting))]
+
+    # No cheer goes on at all, so the name has the board to itself.
+    for form in forms:
+        lines = _lines(form)
         if lines is not None:
             return lines
     return _ellipsized(_unscoped(words))
@@ -1003,7 +1053,7 @@ async def show_holiday(ctx: Context, data: dict[str, Any]) -> None:
 
     It reads what ``vestaboard_fetch_holidays`` wrote down, picks one of the
     day's holidays -- at random among the ones not lately shown -- and puts its
-    name on the board::
+    name on the board behind something daft::
 
         alias: Vestaboard holiday
         triggers:

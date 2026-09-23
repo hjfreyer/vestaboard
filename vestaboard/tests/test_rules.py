@@ -966,11 +966,14 @@ def test_the_board_only_gets_letters_it_has_flaps_for():
 
 
 def test_a_name_that_fits_is_left_alone():
-    assert rules.holiday_lines("National Chicken Month") == [
+    assert rules.holiday_lines("National Chicken Month", cheers=()) == [
         "NATIONAL",
         "CHICKEN MONTH",
     ]
-    assert rules.holiday_lines("Fresh Spinach Day") == ["FRESH SPINACH", "DAY"]
+    assert rules.holiday_lines("Fresh Spinach Day", cheers=()) == [
+        "FRESH SPINACH",
+        "DAY",
+    ]
 
 
 def test_a_name_that_does_not_fit_gives_up_its_scope_a_bit_at_a_time():
@@ -979,7 +982,7 @@ def test_a_name_that_does_not_fit_gives_up_its_scope_a_bit_at_a_time():
     name = "International Day of Persons with Disabilities"
 
     assert rules._lines(rules.sayable(name).split()) is None
-    assert rules.holiday_lines(name) == [
+    assert rules.holiday_lines(name, cheers=()) == [
         "INTL DAY OF",
         "PERSONS WITH",
         "DISABILITIES",
@@ -1019,7 +1022,7 @@ def test_a_holiday_that_is_only_its_scope_keeps_it():
         "INTERNATIONAL",
     ]
     assert rules._unscoped(["WORLD", "TURTLE", "DAY"]) == ["TURTLE", "DAY"]
-    assert rules.holiday_lines("World") == ["WORLD"]
+    assert rules.holiday_lines("World", cheers=()) == ["WORLD"]
 
 
 def test_each_scope_word_has_a_shorter_spelling():
@@ -1060,15 +1063,20 @@ async def test_showing_a_holiday_puts_one_of_the_day_s_names_up(tmp_path):
 
     await rules.show_holiday(ctx, {})
 
+    # Which cheer went in front is the rotation's business; what matters is
+    # that one of the day's holidays is what the board is talking about.
     [lines] = ctx.board.lines
-    assert lines in (
-        rules._down_the_middle(rules.holiday_lines(SPINACH.name)),
-        rules._down_the_middle(rules.holiday_lines(CHICKEN.name)),
-    )
+    said = " ".join(lines)
+    assert "SPINACH" in said or "CHICKEN" in said
 
 
 @pytest.mark.asyncio
-async def test_the_holiday_shown_keeps_off_the_ones_lately_shown(tmp_path):
+async def test_the_holiday_shown_keeps_off_the_ones_lately_shown(
+    tmp_path, monkeypatch
+):
+    # The cheers have a rotation of their own and this is about the holidays':
+    # with no cheer in front, a board is the holiday and nothing else.
+    monkeypatch.setattr(rules, "CHEERS", ())
     day = [
         Holiday(f"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeee{index}", name)
         for index, name in enumerate(
@@ -1129,7 +1137,7 @@ async def test_a_day_in_the_event_data_is_the_day_that_is_shown(tmp_path):
     await rules.show_holiday(ctx, {"date": "2026-09-22"})
 
     [lines] = ctx.board.lines
-    assert lines == rules._down_the_middle(rules.holiday_lines(CHICKEN.name))
+    assert "CHICKEN" in " ".join(lines)
 
 
 @pytest.mark.asyncio
@@ -1143,7 +1151,7 @@ async def test_a_name_the_board_cannot_say_costs_that_holiday_and_no_more(
     await rules.show_holiday(ctx, {})
 
     [lines] = ctx.board.lines
-    assert lines == rules._down_the_middle(rules.holiday_lines(SPINACH.name))
+    assert "SPINACH" in " ".join(lines)
     assert "cannot say any of it" in caplog.text
 
 
@@ -1156,3 +1164,72 @@ async def test_a_day_of_nothing_but_unsayable_names_leaves_the_board_alone(tmp_p
     await rules.show_holiday(ctx, {})
 
     assert ctx.board.lines == []
+
+
+def test_a_cheer_goes_in_front_when_there_is_room_for_one():
+    assert rules.holiday_lines("Pie Day", cheers=("HOORAY FOR",)) == [
+        "HOORAY FOR PIE",
+        "DAY",
+    ]
+
+
+def test_a_cheer_matters_more_than_spelling_the_scope_out():
+    name = "International Day of Persons with Disabilities"
+
+    # Not one of the cheers will go on beside INTERNATIONAL written out.
+    assert all(
+        rules._lines([*cheer.split(), *rules.sayable(name).split()]) is None
+        for cheer in rules.CHEERS
+    )
+
+    # So it is the scope that gives way, and not the cheer.
+    assert rules.holiday_lines(name, cheers=("IT'S",)) == [
+        "IT'S INTL DAY",
+        "OF PERSONS WITH",
+        "DISABILITIES",
+    ]
+
+
+def test_a_long_name_gets_a_short_cheer_rather_than_none():
+    # A name with most of the board to itself: the roomy cheers will not go on
+    # beside it, and the rotation only ever chooses among the ones that will.
+    name = "National Alcohol and Drug Addiction Month"
+
+    boards = {" ".join(rules.holiday_lines(name)) for _ in range(40)}
+
+    assert all(
+        any(said.startswith(cheer) for cheer in rules.CHEERS) for said in boards
+    )
+    assert not any(said.startswith("GET READY FOR") for said in boards)
+
+
+def test_a_name_with_no_room_for_any_cheer_goes_on_without_one():
+    name = "International Day for the Preservation of the Ozone Layer"
+
+    assert rules.holiday_lines(name) == rules.holiday_lines(name, cheers=())
+
+
+def test_dots_never_come_with_a_cheer():
+    # Cutting the holiday's own words to make room to be pleased about it is
+    # not a trade worth making.
+    name = "International Day for the Total Elimination of Nuclear Weapons"
+    lines = rules.holiday_lines(name)
+
+    assert lines == rules.holiday_lines(name, cheers=())
+    assert lines[-1].endswith(rules.ELLIPSIS)
+
+
+def test_every_cheer_is_one_the_board_can_say_and_has_room_for():
+    for cheer in rules.CHEERS:
+        assert rules.sayable(cheer) == cheer
+        # A cheer that will not go in front of even a short holiday is one the
+        # board is never going to show.
+        assert rules._lines([*cheer.split(), "PIE", "DAY"]) is not None
+
+
+def test_the_cheers_take_their_turns():
+    boards = [tuple(rules.holiday_lines("Pie Day")) for _ in range(20)]
+
+    assert len(set(boards)) > 1
+    for index, board in enumerate(boards[1:], start=1):
+        assert board != boards[index - 1]
