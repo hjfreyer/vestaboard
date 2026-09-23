@@ -301,18 +301,26 @@ can fire as often as you like. A day that has not been looked up yet, or that
 held no holidays, is logged and leaves the board as it was -- so this wants the
 look-up automation above running first.
 
-The board is three rows of fifteen, which many holidays do not fit in. A name
-that will not go on is shortened a step at a time and no further than it must
-be: `NATIONAL`, `INTERNATIONAL` and `WORLD` become `NATL`, `INTL` and `WRLD`,
-then the scope is dropped altogether, and only after that are the leftover
-words replaced with dots.
+The name goes up behind something daft -- `HAPPY`, `IT'S`, `WOWEE!`, `OH BOY
+IT'S` and a few more, on a rotation of their own, so the board is pleased in a
+different way each time.
+
+The board is three rows of fifteen, which many holidays do not fit in, still
+less with a cheer in front. A name that will not go on is shortened a step at a
+time and no further than it must be: `NATIONAL`, `INTERNATIONAL` and `WORLD`
+become `NATL`, `INTL` and `WRLD`, then the scope is dropped altogether, and
+only after that are the leftover words replaced with dots.
 
 | The holiday | What the board says |
 | --- | --- |
-| National Chicken Month | NATIONAL / CHICKEN MONTH |
-| International Day of Persons with Disabilities | INTL DAY OF / PERSONS WITH / DISABILITIES |
+| National Chicken Month | WOWEE! NATIONAL / CHICKEN MONTH |
+| International Day of Persons with Disabilities | IT'S INTL DAY / OF PERSONS WITH / DISABILITIES |
 | International Day for the Preservation of the Ozone Layer | DAY FOR THE / PRESERVATION OF / THE OZONE LAYER |
 | International Day for the Total Elimination of Nuclear Weapons | DAY FOR THE / TOTAL / ELIMINATION... |
+
+The cheer counts for more than spelling the scope out, which is why the second
+one keeps both. A holiday with no room for even the shortest cheer, like the
+last two, takes the board on its own.
 
 ## Changing what gets sent
 
