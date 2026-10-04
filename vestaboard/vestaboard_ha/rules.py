@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import unicodedata
 from collections.abc import Sequence
 from datetime import date, datetime
@@ -934,26 +935,43 @@ def sayable(name: str) -> str:
     )
 
 
+def _pieces(word: str) -> list[str]:
+    """A word in the pieces a row may end between.
+
+    Just the word, as a rule. A word too long for any row that already has
+    hyphens in it comes apart after them -- SHIPS-IN- and BOTTLES -- since
+    breaking where the name already breaks adds nothing to it. A word that
+    fits is never broken, hyphens or not.
+    """
+    if len(word) <= charcodes.COLS:
+        return [word]
+    return re.findall(r"[^-]*-+|[^-]+", word)
+
+
 def _lines(words: list[str]) -> list[str] | None:
     """The words wrapped onto the board, or None if they will not go.
 
-    At the spaces and nowhere else: the board has no hyphen worth the name, and
-    a word broken over two rows reads as two words.
+    At the spaces, and inside a word only after a hyphen it already has and
+    only when it is too long for a row otherwise: the board has no hyphen
+    worth the name to add, and a word broken over two rows reads as two words.
     """
     lines: list[str] = []
     line = ""
     for word in words:
-        if len(word) > charcodes.COLS:
-            return None
-        nxt = f"{line} {word}" if line else word
-        if len(nxt) <= charcodes.COLS:
-            line = nxt
-            continue
-        lines.append(line)
-        line = word
-        if len(lines) == charcodes.ROWS:
-            # A row's worth of words still in hand and no row left to put it on.
-            return None
+        for index, piece in enumerate(_pieces(word)):
+            if len(piece) > charcodes.COLS:
+                return None
+            # The rest of a hyphenated word goes straight on, with no space.
+            gap = "" if index else " "
+            nxt = f"{line}{gap}{piece}" if line else piece
+            if len(nxt) <= charcodes.COLS:
+                line = nxt
+                continue
+            lines.append(line)
+            line = piece
+            if len(lines) == charcodes.ROWS:
+                # A row's worth of words still in hand and no row left for it.
+                return None
     if line:
         lines.append(line)
     return lines or None
