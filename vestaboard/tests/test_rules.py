@@ -954,6 +954,7 @@ A_YEAR_OF_HOLIDAYS = (
     "National Alcohol and Drug Addiction Recovery Month",
     "Fresh Spinach Day",
     "Bring Your Own Cup Day",
+    "National Ships-in-Bottles Day",
 )
 
 
@@ -1011,6 +1012,26 @@ def test_one_word_longer_than_the_board_is_cut_where_it_runs_out():
 
     assert line == "SUPERCALIFRA..."
     assert len(line) == charcodes.COLS
+
+
+def test_a_hyphenated_word_too_long_for_a_row_breaks_after_a_hyphen():
+    # SHIPS-IN-BOTTLES is one letter wider than the board, and used to be cut
+    # down to SHIPS-IN-BOT... when the name already says where it can break.
+    name = "National Ships-in-Bottles Day"
+
+    assert rules.holiday_lines(name, cheers=()) == [
+        "NATIONAL SHIPS-",
+        "IN-BOTTLES DAY",
+    ]
+    assert rules.holiday_lines(name, cheers=("HAPPY",)) == [
+        "HAPPY NATIONAL",
+        "SHIPS-IN-",
+        "BOTTLES DAY",
+    ]
+
+
+def test_a_hyphenated_word_that_fits_is_never_broken():
+    assert rules._lines(["FOREVER", "FORGET-ME-NOT"]) == ["FOREVER", "FORGET-ME-NOT"]
 
 
 def test_a_holiday_that_is_only_its_scope_keeps_it():
