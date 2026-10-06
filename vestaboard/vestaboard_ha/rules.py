@@ -256,14 +256,15 @@ SMOKER_ROWS = (("FOOD", "food"), ("AIR", "air"))
 TIMER_LABEL = "TIMER"
 TIMER_KEY = "duration"
 
-#: What a value takes: three degrees and the F. One wanting more -- a cook with
-#: over ten hours left, whose timer reads ``12:06`` -- gets it, and every row
-#: shifts a chip left together, so the values stay under one another.
-VALUE_WIDTH = 4
+#: What a value takes, on every row and every board: room for a timer's
+#: ``12:06``, so a cook going past ten hours leaves the labels where they were
+#: rather than stepping the whole board a chip left -- which would have every
+#: flap on it turn over. Three degrees and the F sit in it with a chip spare.
+VALUE_WIDTH = 5
 
-#: The most a value can take before TIMER, the longest label, would push its
-#: row into the smoke.
-VALUE_LIMIT = charcodes.COLS - SMOKE_COLS - len(TIMER_LABEL) - 1
+#: The longest countdown the timer shows; a cook with more left than this reads
+#: it, since a third digit of hours would not fit in the field.
+TIMER_MAX_MINUTES = 99 * 60 + 59
 
 
 def _shown(text: str, raw: Any) -> str:
@@ -273,10 +274,10 @@ def _shown(text: str, raw: Any) -> str:
     gone wrong rather than that the meat is very hot -- and a ``?`` says as
     much, where the digits that did fit would read as a reading.
     """
-    if len(text) <= VALUE_LIMIT:
+    if len(text) <= VALUE_WIDTH:
         return text
     _LOGGER.warning(
-        "smoker: %r needs more than the %d chips a value has", raw, VALUE_LIMIT
+        "smoker: %r needs more than the %d chips a value has", raw, VALUE_WIDTH
     )
     return "?"
 
@@ -322,11 +323,11 @@ def _minutes(raw: Any) -> int | None:
 
 
 def _countdown(raw: Any) -> str:
-    """How long is left, as hours and minutes."""
+    """How long is left, as hours and minutes, topping out at ``99:59``."""
     minutes = _minutes(raw)
     if minutes is None:
         return "?"
-    hours, left = divmod(minutes, 60)
+    hours, left = divmod(min(minutes, TIMER_MAX_MINUTES), 60)
     return _shown(f"{hours}:{left:02d}", raw)
 
 
@@ -357,12 +358,11 @@ def smoker_grid(data: dict[str, Any]) -> list[list[int]]:
     if duration is not None and str(duration).strip():
         readings.append((TIMER_LABEL, _countdown(duration)))
 
-    # One field for every value, as wide as the widest of them, so the readings
-    # end on the board's last chip and their digits line up under one another
-    # however long each row's label is.
-    width = max(VALUE_WIDTH, *(len(value) for _, value in readings))
+    # One field for every value, the same width whatever is in it, so the
+    # readings end on the board's last chip, their digits line up under one
+    # another however long each row's label is, and the labels never move.
     for row, (label, value) in enumerate(readings):
-        line = f"{label} {value:>{width}}"
+        line = f"{label} {value:>{VALUE_WIDTH}}"
         start = charcodes.COLS - len(line)
         if start < SMOKE_COLS:
             raise ValueError(f"{line!r} leaves no room for the smoke")

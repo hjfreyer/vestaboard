@@ -162,8 +162,9 @@ board at all, though the ember keeps its corner. Temperatures go up as whole
 degrees and an `F`, which is doing the job a degree sign would: code 62 is a
 degree sign on the flagship board and a red heart on this one. A reading that
 is missing or is not a number shows as `?` rather than costing the board the
-others, and a cook past ten hours takes the chip its `12:06` needs from every
-row at once, so the readings stay in a column.
+others. Every reading gets the same five chips, room enough for a timer's
+`12:06`, so the labels stay put however long the cook runs; one with more than
+99 hours left reads `99:59`.
 
 `vestaboard_forecast` is the third: the date down the left, the day's weather
 drawn in the middle, and its high over its low on the right, each said in
