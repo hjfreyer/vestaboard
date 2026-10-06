@@ -228,9 +228,10 @@ duration at all -- which is what the `if` in that last template is for: the
 TIMER row is on the board while the timer is running and gone when it is not. Temperatures go up as whole degrees with an `F`
 after them -- the board has a degree sign on the flagship, but this one is a
 Note, which draws that flap as a red heart -- and a reading that is missing or
-is not a number shows as `?` while the other rows still go up. A cook past ten
-hours needs a chip more for its timer, and every row steps left together to
-give it one, so the readings stay in a column.
+is not a number shows as `?` while the other rows still go up. Every reading
+gets the same five chips -- room for a timer's `12:06` -- so the labels stay
+where they are however long the cook runs, and a cook with more than 99 hours
+left reads `99:59`.
 
 ## The holidays
 

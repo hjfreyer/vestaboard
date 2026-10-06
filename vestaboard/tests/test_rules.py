@@ -356,9 +356,9 @@ async def test_the_smoker_board_is_two_temperatures_and_a_timer(tmp_path):
 
     [grid] = ctx.board.grids
     assert right_of_the_smoke(grid) == [
-        "   FOOD 135F",
-        "    AIR 227F",
-        "  TIMER 2:06",
+        "  FOOD  135F",
+        "   AIR  227F",
+        " TIMER  2:06",
     ]
 
 
@@ -370,8 +370,8 @@ async def test_no_duration_means_no_timer_row(tmp_path):
 
     [grid] = ctx.board.grids
     assert right_of_the_smoke(grid) == [
-        "   FOOD 135F",
-        "    AIR 227F",
+        "  FOOD  135F",
+        "   AIR  227F",
         "            ",
     ]
 
@@ -423,7 +423,7 @@ async def test_a_duration_can_arrive_however_the_automation_has_it(tmp_path):
         await rules.smoker(ctx, {"food": 135, "air": 227, "duration": duration})
 
     assert [right_of_the_smoke(grid)[2] for grid in ctx.board.grids] == [
-        "  TIMER 2:06"
+        " TIMER  2:06"
     ] * 4
 
 
@@ -434,7 +434,7 @@ async def test_a_countdown_keeps_the_minutes_it_has_not_finished(tmp_path):
     # Seconds are dropped rather than rounded: 6:59 to go is still six minutes.
     await rules.smoker(ctx, {"food": 135, "air": 227, "duration": "0:06:59"})
 
-    assert right_of_the_smoke(ctx.board.grids[0])[2] == "  TIMER 0:06"
+    assert right_of_the_smoke(ctx.board.grids[0])[2] == " TIMER  0:06"
 
 
 @pytest.mark.asyncio
@@ -443,21 +443,36 @@ async def test_a_cook_that_has_run_over_sits_at_zero(tmp_path):
 
     await rules.smoker(ctx, {"food": 135, "air": 227, "duration": -30})
 
-    assert right_of_the_smoke(ctx.board.grids[0])[2] == "  TIMER 0:00"
+    assert right_of_the_smoke(ctx.board.grids[0])[2] == " TIMER  0:00"
 
 
 @pytest.mark.asyncio
-async def test_a_long_cook_takes_the_chip_it_needs_from_every_row(tmp_path):
+async def test_a_long_cook_leaves_the_labels_where_they_were(tmp_path):
     ctx = FakeContext(tmp_path)
 
+    await rules.smoker(ctx, {"food": 135, "air": 227, "duration": "2:06:00"})
     await rules.smoker(ctx, {"food": 135, "air": 227, "duration": "12:06:00"})
 
-    # The whole board steps left together, so the readings stay in a column.
-    assert right_of_the_smoke(ctx.board.grids[0]) == [
+    # Only the flaps under the digits that changed turn over.
+    short, long = (right_of_the_smoke(grid) for grid in ctx.board.grids)
+    assert short[:2] == long[:2]
+    assert long == [
         "  FOOD  135F",
         "   AIR  227F",
         " TIMER 12:06",
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_cook_past_a_hundred_hours_reads_99_59(tmp_path):
+    ctx = FakeContext(tmp_path)
+
+    for duration in ("100:00:00", "10000:00", 1e9):
+        await rules.smoker(ctx, {"food": 135, "air": 227, "duration": duration})
+
+    assert [right_of_the_smoke(grid)[2] for grid in ctx.board.grids] == [
+        " TIMER 99:59"
+    ] * 3
 
 
 @pytest.mark.asyncio
@@ -469,8 +484,8 @@ async def test_temperatures_are_whole_degrees_however_they_arrive(tmp_path):
     await rules.smoker(ctx, {"food": "135.4", "air": 226.6})
 
     assert right_of_the_smoke(ctx.board.grids[0])[:2] == [
-        "   FOOD 135F",
-        "    AIR 227F",
+        "  FOOD  135F",
+        "   AIR  227F",
     ]
 
 
@@ -482,9 +497,9 @@ async def test_a_reading_that_is_not_a_number_is_a_question_mark(tmp_path):
     await rules.smoker(ctx, {"food": 135, "air": "unavailable", "duration": "soon"})
 
     assert right_of_the_smoke(ctx.board.grids[0]) == [
-        "   FOOD 135F",
-        "    AIR    ?",
-        "  TIMER    ?",
+        "  FOOD  135F",
+        "   AIR     ?",
+        " TIMER     ?",
     ]
 
 
@@ -492,13 +507,13 @@ async def test_a_reading_that_is_not_a_number_is_a_question_mark(tmp_path):
 async def test_a_reading_too_wide_for_its_chips_is_a_question_mark(tmp_path):
     ctx = FakeContext(tmp_path)
 
-    # Nothing about a cook is that hot or that long; the sensor is broken.
-    await rules.smoker(ctx, {"food": 1e9, "air": 227, "duration": "10000:00"})
+    # Nothing about a cook is that hot; the sensor is broken.
+    await rules.smoker(ctx, {"food": 1e9, "air": 227, "duration": "2:06"})
 
     assert right_of_the_smoke(ctx.board.grids[0]) == [
-        "   FOOD    ?",
-        "    AIR 227F",
-        "  TIMER    ?",
+        "  FOOD     ?",
+        "   AIR  227F",
+        " TIMER  2:06",
     ]
 
 
