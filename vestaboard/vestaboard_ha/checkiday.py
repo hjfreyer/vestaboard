@@ -31,6 +31,8 @@ from collections.abc import Mapping
 from datetime import date, datetime
 from typing import Any, NamedTuple
 
+import aiohttp
+
 _LOGGER = logging.getLogger(__name__)
 
 #: Where the API lives. The path under it is the operation: ``events`` for a
@@ -46,6 +48,16 @@ KEY_HEADER = "apikey"
 #: What is left of the month's requests, which the API says in a header rather
 #: than in the body. Worth logging: the allowance is the reason for the caches.
 REMAINING_HEADER = "X-RateLimit-Remaining-Month"
+
+#: How long one ask may take, which is a good deal longer than the half a
+#: minute everything else gets: Checkiday is slow often enough to time out on
+#: that, and nothing is waiting on the answer but a cache for later.
+TIMEOUT = aiohttp.ClientTimeout(total=5 * 60)
+
+#: How many more times an ask that timed out is made before giving up. Only a
+#: timeout is asked again -- a refusal would only be refused again -- and a
+#: timeout may have spent a request of the allowance, so it is only a couple.
+RETRIES = 2
 
 #: The three lists a date's holidays arrive in, and whether a holiday in each
 #: runs longer than the one day. ``events`` is the single days; the other two
@@ -204,14 +216,19 @@ class Checkiday:
         if self._timezone:
             params["timezone"] = self._timezone
 
-        async with self._session.get(
-            EVENTS_URL,
-            params=params,
-            headers={KEY_HEADER: self._api_key, "User-Agent": "vestaboard-ha"},
-        ) as response:
-            status = response.status
-            body = await response.text()
-            remaining = response.headers.get(REMAINING_HEADER)
+        for retry in range(RETRIES + 1):
+            try:
+                status, body, remaining = await self._ask(params)
+                break
+            except TimeoutError as exc:
+                if retry == RETRIES:
+                    raise CheckidayError(
+                        f"Checkiday did not answer within {TIMEOUT.total:.0f}s, "
+                        f"{RETRIES + 1} times running"
+                    ) from exc
+                _LOGGER.warning(
+                    "checkiday: no answer within %.0fs; asking again", TIMEOUT.total
+                )
 
         try:
             payload = json.loads(body)
@@ -234,3 +251,17 @@ class Checkiday:
             _LOGGER.info("checkiday: %s requests left this month", remaining)
 
         return holidays_in(payload)
+
+    async def _ask(self, params: dict[str, str]) -> tuple[int, str, str | None]:
+        """One request: its status, its body, and what is left of the month."""
+        async with self._session.get(
+            EVENTS_URL,
+            params=params,
+            headers={KEY_HEADER: self._api_key, "User-Agent": "vestaboard-ha"},
+            timeout=TIMEOUT,
+        ) as response:
+            return (
+                response.status,
+                await response.text(),
+                response.headers.get(REMAINING_HEADER),
+            )

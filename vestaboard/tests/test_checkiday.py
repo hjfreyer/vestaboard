@@ -60,14 +60,21 @@ class FakeResponse:
 
 
 class FakeSession:
-    def __init__(self, payload=None, *, status=200, body=None, headers=None):
+    def __init__(
+        self, payload=None, *, status=200, body=None, headers=None, timeouts=0
+    ):
         self.status = status
         self.body = json.dumps(payload) if body is None else body
         self.headers = headers or {}
+        self.timeouts = timeouts
         self.calls = []
 
-    def get(self, url, *, params=None, headers=None):
-        self.calls.append({"url": url, "params": params, "headers": headers})
+    def get(self, url, *, params=None, headers=None, timeout=None):
+        self.calls.append(
+            {"url": url, "params": params, "headers": headers, "timeout": timeout}
+        )
+        if len(self.calls) <= self.timeouts:
+            raise TimeoutError
         return FakeResponse(self.status, self.body, self.headers)
 
 
@@ -161,6 +168,45 @@ async def test_a_body_that_is_not_json_is_an_error():
 
     with pytest.raises(CheckidayError, match="not JSON"):
         await Checkiday("key", session).holidays(A_DAY)
+
+
+@pytest.mark.asyncio
+async def test_a_request_gets_five_minutes_rather_than_the_session_s_default():
+    session = FakeSession(a_listing())
+
+    await Checkiday("key", session).holidays()
+
+    assert session.calls[0]["timeout"].total == 5 * 60
+
+
+@pytest.mark.asyncio
+async def test_a_timeout_is_asked_again(caplog):
+    session = FakeSession(a_listing(events=[SPINACH]), timeouts=2)
+
+    with caplog.at_level(logging.WARNING, logger="vestaboard_ha.checkiday"):
+        found = await Checkiday("key", session).holidays()
+
+    assert [h.name for h in found.holidays] == ["Fresh Spinach Day"]
+    assert len(session.calls) == 3
+    assert caplog.text.count("asking again") == 2
+
+
+@pytest.mark.asyncio
+async def test_three_timeouts_running_is_an_error():
+    session = FakeSession(a_listing(), timeouts=3)
+
+    with pytest.raises(CheckidayError, match="did not answer"):
+        await Checkiday("key", session).holidays()
+    assert len(session.calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_is_not_asked_again():
+    session = FakeSession({"error": "You have exceeded your quota"}, status=429)
+
+    with pytest.raises(CheckidayError):
+        await Checkiday("key", session).holidays()
+    assert len(session.calls) == 1
 
 
 @pytest.mark.asyncio
