@@ -54,11 +54,6 @@ REMAINING_HEADER = "X-RateLimit-Remaining-Month"
 #: that, and nothing is waiting on the answer but a cache for later.
 TIMEOUT = aiohttp.ClientTimeout(total=5 * 60)
 
-#: How many more times an ask that timed out is made before giving up. Only a
-#: timeout is asked again -- a refusal would only be refused again -- and a
-#: timeout may have spent a request of the allowance, so it is only a couple.
-RETRIES = 2
-
 #: The three lists a date's holidays arrive in, and whether a holiday in each
 #: runs longer than the one day. ``events`` is the single days; the other two
 #: are the weeks and the months, split by whether this is the day they begin.
@@ -216,19 +211,15 @@ class Checkiday:
         if self._timezone:
             params["timezone"] = self._timezone
 
-        for retry in range(RETRIES + 1):
-            try:
-                status, body, remaining = await self._ask(params)
-                break
-            except TimeoutError as exc:
-                if retry == RETRIES:
-                    raise CheckidayError(
-                        f"Checkiday did not answer within {TIMEOUT.total:.0f}s, "
-                        f"{RETRIES + 1} times running"
-                    ) from exc
-                _LOGGER.warning(
-                    "checkiday: no answer within %.0fs; asking again", TIMEOUT.total
-                )
+        # Not asked again here: the automation fires every hour, and a
+        # timeout is turned into our own error so the rule counts it as one of
+        # the day's attempts.
+        try:
+            status, body, remaining = await self._ask(params)
+        except TimeoutError as exc:
+            raise CheckidayError(
+                f"Checkiday did not answer within {TIMEOUT.total:.0f}s"
+            ) from exc
 
         try:
             payload = json.loads(body)
