@@ -106,5 +106,6 @@ def test_shipped_rules_all_register():
         "vestaboard_smoker",
         "vestaboard_forecast",
         "vestaboard_fetch_holidays",
+        "vestaboard_judge_holidays",
         "vestaboard_show_holiday",
     ]

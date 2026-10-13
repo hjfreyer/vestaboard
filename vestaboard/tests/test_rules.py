@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import date, timedelta
 
@@ -6,6 +7,7 @@ import pytest
 from vestaboard_ha import art, charcodes, rules
 from vestaboard_ha.checkiday import CheckidayError, Holiday, Listing
 from vestaboard_ha.holidays import HolidayStore
+from vestaboard_ha.judge import JudgeError, Verdict
 from vestaboard_ha.library import Library
 from vestaboard_ha.rotation import Rotation
 
@@ -56,12 +58,39 @@ class FakeCheckiday:
         return Listing(self.day, list(self.giving))
 
 
+class FakeJudge:
+    """Claude without the asking: a verdict for each name, and what it was asked.
+
+    With no key it is the judge an install without one has, which is what
+    every test that is not about judging wants: every holiday goes up.
+    """
+
+    def __init__(self, verdicts=None, *, configured=True, raising=None):
+        self.by_name = dict(verdicts or {})
+        self.configured = configured
+        self.raising = raising
+        self.asked = []
+        self.exemplars = []
+
+    async def verdicts(self, holidays, exemplars=()):
+        self.asked.append([holiday.name for holiday in holidays])
+        self.exemplars.append(list(exemplars))
+        if self.raising is not None:
+            raise self.raising
+        return [
+            Verdict(holiday.id, self.by_name[holiday.name], "because")
+            for holiday in holidays
+            if holiday.name in self.by_name
+        ]
+
+
 class FakeContext:
-    def __init__(self, art_dir, checkiday=None):
+    def __init__(self, art_dir, checkiday=None, judge=None):
         self.board = FakeBoard()
         self.art = Library(art_dir)
         self.checkiday = checkiday if checkiday is not None else FakeCheckiday()
         self.holidays = HolidayStore(art_dir / "holidays")
+        self.judge = judge if judge is not None else FakeJudge(configured=False)
 
 
 @pytest.mark.asyncio
@@ -1269,3 +1298,220 @@ def test_the_cheers_take_their_turns():
     assert len(set(boards)) > 1
     for index, board in enumerate(boards[1:], start=1):
         assert board != boards[index - 1]
+
+
+MEMORIAL = Holiday("31adcacd0a505117d2c4a842676cd91e", "Pearl Harbor Remembrance Day")
+PAYROLL = Holiday("0a505117d2c4a842676cd91e31adcacd", "National Payroll Week")
+
+#: What Claude makes of them, in the fakes.
+VERDICTS = {
+    SPINACH.name: "show",
+    CHICKEN.name: "show",
+    MEMORIAL.name: "sensitive",
+    PAYROLL.name: "hide",
+}
+
+
+def overridden(ctx, holiday, **fields):
+    """Change a holiday's file by hand, the way the household would."""
+    path = ctx.holidays.event_path(holiday.id)
+    payload = json.loads(path.read_text())
+    payload.update(fields)
+    path.write_text(json.dumps(payload))
+
+
+@pytest.mark.asyncio
+async def test_fetching_holidays_has_the_new_ones_judged(tmp_path):
+    judge = FakeJudge(VERDICTS)
+    ctx = FakeContext(tmp_path, FakeCheckiday([SPINACH, MEMORIAL]), judge)
+
+    await rules.fetch_holidays(ctx, {})
+
+    assert judge.asked == [[SPINACH.name, MEMORIAL.name]]
+    assert ctx.holidays.judgement(SPINACH.id).verdict == "show"
+    assert ctx.holidays.judgement(MEMORIAL.id).verdict == "sensitive"
+
+
+@pytest.mark.asyncio
+async def test_a_holiday_judged_before_is_not_judged_again(tmp_path):
+    judge = FakeJudge(VERDICTS)
+    checkiday = FakeCheckiday([SPINACH])
+    ctx = FakeContext(tmp_path, checkiday, judge)
+    await rules.fetch_holidays(ctx, {})
+
+    checkiday.giving = [SPINACH, PAYROLL]
+    await rules.fetch_holidays(ctx, {"refresh": True})
+
+    assert judge.asked == [[SPINACH.name], [PAYROLL.name]]
+
+
+@pytest.mark.asyncio
+async def test_a_judge_that_goes_wrong_costs_the_verdicts_and_not_the_day(
+    tmp_path, caplog
+):
+    judge = FakeJudge(raising=JudgeError("overloaded"))
+    ctx = FakeContext(tmp_path, FakeCheckiday([SPINACH]), judge)
+
+    await rules.fetch_holidays(ctx, {})
+
+    assert ctx.holidays.ids_for(date.today()) == [SPINACH.id]
+    assert ctx.holidays.judgement(SPINACH.id).verdict is None
+    assert "could not judge 1: overloaded" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_the_exemplars_go_with_every_question(tmp_path, caplog):
+    caplog.set_level(logging.INFO)
+    judge = FakeJudge(VERDICTS)
+    ctx = FakeContext(tmp_path, FakeCheckiday([PAYROLL]), judge)
+    await rules.fetch_holidays(ctx, {})
+    overridden(ctx, PAYROLL, exemplar=True)
+
+    ctx.checkiday.giving = [PAYROLL, SPINACH]
+    await rules.fetch_holidays(ctx, {"refresh": True})
+
+    assert [exemplar.name for exemplar in judge.exemplars[-1]] == [PAYROLL.name]
+    assert "judging 1 with 1 exemplars (0 show, 1 hide, 0 sensitive)" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_only_a_holiday_judged_show_goes_up(tmp_path):
+    ctx = FakeContext(tmp_path, judge=FakeJudge(VERDICTS))
+    ctx.holidays.remember(date.today(), [MEMORIAL, PAYROLL, SPINACH])
+
+    for _ in range(5):
+        await rules.show_holiday(ctx, {})
+
+    said = {" ".join(lines) for lines in ctx.board.lines}
+    assert all("SPINACH" in board for board in said)
+
+
+@pytest.mark.asyncio
+async def test_a_day_of_nothing_worth_showing_leaves_the_board_alone(
+    tmp_path, caplog
+):
+    caplog.set_level(logging.INFO)
+    ctx = FakeContext(tmp_path, judge=FakeJudge(VERDICTS))
+    ctx.holidays.remember(date.today(), [MEMORIAL, PAYROLL])
+
+    await rules.show_holiday(ctx, {})
+
+    assert ctx.board.lines == []
+    assert "leaving 'Pearl Harbor Remembrance Day' out, it is sensitive" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_the_household_s_override_wins_either_way(tmp_path):
+    ctx = FakeContext(tmp_path, judge=FakeJudge(VERDICTS))
+    ctx.holidays.remember(date.today(), [SPINACH, PAYROLL])
+    ctx.holidays.judge(SPINACH.id, "show")
+    ctx.holidays.judge(PAYROLL.id, "hide")
+
+    overridden(ctx, SPINACH, override="hide")
+    overridden(ctx, PAYROLL, override="show")
+    await rules.show_holiday(ctx, {})
+
+    [lines] = ctx.board.lines
+    assert "PAYROLL" in " ".join(lines)
+
+
+@pytest.mark.asyncio
+async def test_showing_judges_what_the_fetch_could_not(tmp_path):
+    judge = FakeJudge(VERDICTS)
+    ctx = FakeContext(tmp_path, judge=judge)
+    ctx.holidays.remember(date.today(), [SPINACH])
+
+    await rules.show_holiday(ctx, {})
+    await rules.show_holiday(ctx, {})
+
+    # Asked once, and kept: the second board needs nobody to ask.
+    assert judge.asked == [[SPINACH.name]]
+    assert len(ctx.board.lines) == 2
+
+
+@pytest.mark.asyncio
+async def test_with_a_judge_a_holiday_nobody_could_judge_stays_off(tmp_path, caplog):
+    caplog.set_level(logging.INFO)
+    ctx = FakeContext(tmp_path, judge=FakeJudge(raising=JudgeError("down")))
+    ctx.holidays.remember(date.today(), [SPINACH])
+
+    await rules.show_holiday(ctx, {})
+
+    assert ctx.board.lines == []
+    assert "leaving 'Fresh Spinach Day' out until it is judged" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_without_a_judge_every_holiday_goes_up_but_overrides_still_count(
+    tmp_path,
+):
+    ctx = FakeContext(tmp_path)
+    ctx.holidays.remember(date.today(), [SPINACH, PAYROLL])
+    overridden(ctx, PAYROLL, override="hide")
+
+    for _ in range(5):
+        await rules.show_holiday(ctx, {})
+
+    assert all("SPINACH" in " ".join(lines) for lines in ctx.board.lines)
+
+
+@pytest.mark.asyncio
+async def test_judging_the_store_judges_what_nobody_has(tmp_path):
+    judge = FakeJudge(VERDICTS)
+    ctx = FakeContext(tmp_path, judge=judge)
+    ctx.holidays.remember(date.today(), [SPINACH, PAYROLL])
+    ctx.holidays.judge(SPINACH.id, "show")
+
+    await rules.judge_holidays(ctx, {})
+
+    assert judge.asked == [[PAYROLL.name]]
+    assert ctx.holidays.judgement(PAYROLL.id).verdict == "hide"
+
+
+@pytest.mark.asyncio
+async def test_rejudging_goes_over_everything_but_the_exemplars(tmp_path):
+    judge = FakeJudge(VERDICTS)
+    ctx = FakeContext(tmp_path, judge=judge)
+    ctx.holidays.remember(date.today(), [SPINACH, PAYROLL, MEMORIAL])
+    for holiday in (SPINACH, PAYROLL, MEMORIAL):
+        ctx.holidays.judge(holiday.id, "show")
+    overridden(ctx, SPINACH, exemplar=True)
+
+    await rules.judge_holidays(ctx, {"rejudge": "true"})
+
+    [asked] = judge.asked
+    assert sorted(asked) == sorted([PAYROLL.name, MEMORIAL.name])
+    assert ctx.holidays.judgement(MEMORIAL.id).verdict == "sensitive"
+    assert ctx.holidays.judgement(SPINACH.id).verdict == "show"
+
+
+@pytest.mark.asyncio
+async def test_a_big_store_is_judged_a_batch_at_a_time(tmp_path, monkeypatch):
+    monkeypatch.setattr(rules, "BATCH", 2)
+    judge = FakeJudge(VERDICTS)
+    ctx = FakeContext(tmp_path, judge=judge)
+    ctx.holidays.remember(date.today(), [SPINACH, CHICKEN, PAYROLL, MEMORIAL])
+
+    await rules.judge_holidays(ctx, {})
+
+    assert [len(batch) for batch in judge.asked] == [2, 2]
+
+
+@pytest.mark.asyncio
+async def test_judging_with_no_key_says_so(tmp_path, caplog):
+    ctx = FakeContext(tmp_path)
+    ctx.holidays.remember(date.today(), [SPINACH])
+
+    await rules.judge_holidays(ctx, {})
+
+    assert "no Anthropic API key" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_holiday_the_store_could_not_file_does_not_stop_the_judging(tmp_path):
+    odd = Holiday("not/a/word", "Fresh Spinach Day")
+    ctx = FakeContext(tmp_path, FakeCheckiday([odd, PAYROLL]), FakeJudge(VERDICTS))
+
+    await rules.fetch_holidays(ctx, {})
+
+    assert ctx.holidays.judgement(PAYROLL.id).verdict == "hide"

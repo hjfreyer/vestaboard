@@ -27,7 +27,8 @@ from typing import Any
 
 from . import art, charcodes
 from .app import Context
-from .checkiday import CheckidayError
+from .checkiday import CheckidayError, Holiday
+from .judge import BATCH, SHOW, VERDICTS, JudgeError
 from .registry import on_action
 from .rotation import Rotation
 
@@ -866,6 +867,114 @@ async def fetch_holidays(ctx: Context, data: dict[str, Any]) -> None:
         or "no holiday at all",
     )
 
+    # The fetching is done and paid for by now, so a judge having a bad
+    # morning costs the verdicts and nothing else: showing tries again.
+    await _judge(ctx, listing.holidays)
+
+
+async def _judge(ctx: Context, holidays: Sequence[Holiday]) -> bool:
+    """Ask Claude about whichever of ``holidays`` nobody has judged yet.
+
+    Never raises: a verdict that does not come back leaves its holiday
+    unjudged, which keeps it off the board until a later ask does better.
+    Says whether every ask that was made came back.
+    """
+    if not ctx.judge.configured:
+        return True
+    unjudged = [
+        holiday
+        for holiday in holidays
+        if ctx.holidays.judgement(holiday.id).verdict is None
+    ]
+    return await _ask_judge(ctx, unjudged)
+
+
+async def _ask_judge(ctx: Context, holidays: Sequence[Holiday]) -> bool:
+    """Put ``holidays`` to Claude, a batch at a time, and write down the answers."""
+    if not holidays:
+        return True
+
+    exemplars = ctx.holidays.exemplars()
+    counts = {
+        verdict: sum(1 for exemplar in exemplars if exemplar.verdict == verdict)
+        for verdict in VERDICTS
+    }
+    _LOGGER.info(
+        "holidays: judging %d with %d exemplars (%s)",
+        len(holidays),
+        len(exemplars),
+        ", ".join(f"{count} {verdict}" for verdict, count in counts.items()),
+    )
+    if len(exemplars) > MANY_EXEMPLARS:
+        _LOGGER.warning(
+            "holidays: %d exemplars is a lot to send with every question; "
+            "consider pruning them",
+            len(exemplars),
+        )
+
+    for start in range(0, len(holidays), BATCH):
+        batch = holidays[start : start + BATCH]
+        try:
+            verdicts = await ctx.judge.verdicts(batch, exemplars)
+        except JudgeError as exc:
+            _LOGGER.warning("holidays: could not judge %d: %s", len(batch), exc)
+            return False
+        names = {holiday.id: holiday.name for holiday in batch}
+        for verdict in verdicts:
+            ctx.holidays.judge(verdict.id, verdict.verdict, verdict.reason)
+            _LOGGER.info(
+                "holidays: %r is %s: %s",
+                names[verdict.id],
+                verdict.verdict,
+                verdict.reason,
+            )
+    return True
+
+
+#: How many exemplars before the log suggests pruning. Each is a line of the
+#: prompt, so this is about keeping them chosen rather than about the cost.
+MANY_EXEMPLARS = 50
+
+#: What an automation sends to have Claude go over the holidays it has already
+#: judged, after the instructions or the exemplars have changed.
+REJUDGE_KEY = "rejudge"
+
+
+@on_action("judge_holidays")
+async def judge_holidays(ctx: Context, data: dict[str, Any]) -> None:
+    """Fire ``vestaboard_judge_holidays`` to have Claude go over the store.
+
+    Fetching judges a day's new holidays as it goes, so this is for the ones
+    that went in before there was a judge -- a store from before the Anthropic
+    key, or one where an ask went wrong::
+
+        actions:
+          - event: vestaboard_judge_holidays
+
+    With ``rejudge: true`` it asks about every holiday again, judged or not,
+    which is the thing to do after changing the exemplars. Exemplars are left
+    alone either way: they are the answers the others are judged by, and
+    letting Claude change them would be letting it mark its own homework.
+    Overrides are judged again like anything else, but still win.
+    """
+    if not ctx.judge.configured:
+        _LOGGER.warning("holidays: no Anthropic API key configured, so nothing to judge")
+        return
+
+    rejudge = _flag(data.get(REJUDGE_KEY))
+    holidays = []
+    for holiday in ctx.holidays.known():
+        judgement = ctx.holidays.judgement(holiday.id)
+        if judgement.exemplar:
+            continue
+        if rejudge or judgement.verdict is None:
+            holidays.append(holiday)
+
+    if not holidays:
+        _LOGGER.info("holidays: every holiday is judged already")
+        return
+    await _ask_judge(ctx, holidays)
+
 
 #: The words a holiday uses to say how far its claim reaches, and the short
 #: way to write each one. They are the first thing to go when a name will not
@@ -1065,6 +1174,32 @@ def _down_the_middle(lines: list[str]) -> list[str]:
     return ["" for _ in range((charcodes.ROWS - len(lines)) // 2)] + lines
 
 
+def _worth_showing(ctx: Context, holiday: Holiday) -> bool:
+    """Whether the verdict that counts says this holiday can go up.
+
+    With no judge configured, a holiday nobody has judged goes up, which is
+    how the board behaved before there was one; an override still counts.
+    With one, a holiday nobody has judged is kept off until it is: with a
+    cheer in front of every name, an unchecked memorial is the worse mistake.
+    """
+    judgement = ctx.holidays.judgement(holiday.id)
+    label = judgement.label
+    if label is None:
+        if ctx.judge.configured:
+            _LOGGER.info("holidays: leaving %r out until it is judged", holiday.name)
+            return False
+        return True
+    if label != SHOW:
+        _LOGGER.info(
+            "holidays: leaving %r out, it is %s%s",
+            holiday.name,
+            label,
+            " (overridden)" if judgement.override else f": {judgement.reason}",
+        )
+        return False
+    return True
+
+
 @on_action("show_holiday")
 async def show_holiday(ctx: Context, data: dict[str, Any]) -> None:
     """Fire ``vestaboard_show_holiday`` to put one of today's holidays up.
@@ -1085,15 +1220,26 @@ async def show_holiday(ctx: Context, data: dict[str, Any]) -> None:
     has not been fetched, or that turned out to hold no holidays, is logged and
     leaves the board showing whatever it had.
 
+    With an Anthropic key configured, only the holidays Claude judged ``show``
+    go up -- or that the household overrode to ``show`` -- and the rest are
+    logged with the reason they were left out. See ``judge.py``.
+
     The day is today unless the automation sends a ``date``, which is mostly a
     way to look at a day that has already been.
     """
     day = _date_asked_for(_either(data, "date", "datetime"), rule="holidays")
+    holidays = ctx.holidays.holidays_for(day)
+
+    # Anything the fetch could not get judged gets another go here, which
+    # costs nothing of Checkiday's allowance and only happens once it works.
+    await _judge(ctx, holidays)
 
     # A name with nothing sayable in it should cost us that holiday rather
     # than the turn: the board is better off with one of the others on it.
     showable = []
-    for holiday in ctx.holidays.holidays_for(day):
+    for holiday in holidays:
+        if not _worth_showing(ctx, holiday):
+            continue
         if sayable(holiday.name).split():
             showable.append(holiday)
         else:
