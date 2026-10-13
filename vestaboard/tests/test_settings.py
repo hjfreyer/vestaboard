@@ -104,6 +104,29 @@ def test_no_checkiday_key_is_a_holiday_fetch_that_will_not_run(tmp_path, monkeyp
     assert not settings_module.load().has_checkiday
 
 
+def test_the_anthropic_key_comes_from_the_options_or_the_environment(
+    tmp_path, monkeypatch
+):
+    options = tmp_path / "options.json"
+    options.write_text(json.dumps({"anthropic_api_key": "from-options"}))
+    monkeypatch.setattr(settings_module, "OPTIONS_PATH", options)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    settings = settings_module.load()
+    assert settings.anthropic_api_key == "from-options"
+    assert settings.has_judge
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "from-env")
+    assert settings_module.load().anthropic_api_key == "from-env"
+
+
+def test_no_anthropic_key_is_a_board_that_shows_every_holiday(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings_module, "OPTIONS_PATH", tmp_path / "missing.json")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    assert not settings_module.load().has_judge
+
+
 def test_the_holidays_live_in_the_app_storage_beside_the_art(tmp_path, monkeypatch):
     monkeypatch.setattr(settings_module, "OPTIONS_PATH", tmp_path / "missing.json")
     monkeypatch.delenv("HOLIDAYS_DIR", raising=False)

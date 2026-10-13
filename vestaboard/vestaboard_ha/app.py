@@ -15,6 +15,7 @@ from .board import Vestaboard
 from .checkiday import Checkiday
 from .hass import HassClient
 from .holidays import HolidayStore
+from .judge import Judge
 from .library import Library
 from .settings import Settings
 
@@ -30,6 +31,7 @@ class Context:
     art: Library
     checkiday: Checkiday
     holidays: HolidayStore
+    judge: Judge
     settings: Settings
 
 
@@ -78,6 +80,8 @@ async def run() -> None:
         # Said once at startup rather than only when the event is fired, since
         # an empty option is the likeliest reason a holiday board never comes.
         _LOGGER.info("no Checkiday API key, so there are no holidays to look up")
+    if not settings.has_judge:
+        _LOGGER.info("no Anthropic API key, so every holiday goes on the board")
 
     async with aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=30)
@@ -94,6 +98,7 @@ async def run() -> None:
             # works today out in its own and tells us which day it landed on.
             checkiday=Checkiday(settings.checkiday_api_key, session),
             holidays=HolidayStore(settings.holidays_dir),
+            judge=Judge(settings.anthropic_api_key),
             settings=settings,
         )
 
@@ -110,5 +115,6 @@ async def run() -> None:
                     lambda event: _dispatch(ctx, event), *_event_types()
                 )
         finally:
+            await ctx.judge.close()
             if gallery is not None:
                 await gallery.cleanup()

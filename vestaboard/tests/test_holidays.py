@@ -5,7 +5,8 @@ from datetime import date
 import pytest
 
 from vestaboard_ha.checkiday import Holiday
-from vestaboard_ha.holidays import HolidayStore
+from vestaboard_ha.holidays import HolidayStore, Judgement
+from vestaboard_ha.judge import Exemplar
 
 A_DAY = date(2026, 9, 22)
 ANOTHER_DAY = date(2026, 9, 23)
@@ -164,3 +165,149 @@ def test_a_day_that_answers_starts_counting_again(tmp_path):
     store.remember(A_DAY, [SPINACH])
 
     assert store.attempts_for(A_DAY) == 0
+
+
+def edit(store, holiday, **fields):
+    """Change a holiday's file by hand, the way the household would."""
+    path = store.event_path(holiday.id)
+    payload = json.loads(path.read_text())
+    payload.update(fields)
+    path.write_text(json.dumps(payload))
+
+
+def test_a_holiday_nobody_has_judged_has_no_verdict(tmp_path):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [SPINACH])
+
+    assert store.judgement(SPINACH.id) == Judgement()
+    assert store.judgement(SPINACH.id).label is None
+    # Nor does one the store has never heard of.
+    assert store.judgement("ffffffffffffffffffffffffffffffff").label is None
+
+
+def test_a_verdict_is_kept_beside_the_name(tmp_path):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [SPINACH])
+
+    store.judge(SPINACH.id, "show", "A silly food day")
+
+    assert store.judgement(SPINACH.id) == Judgement("show", "A silly food day")
+    assert store.holiday(SPINACH.id) == SPINACH
+    payload = json.loads(store.event_path(SPINACH.id).read_text())
+    assert payload["judged"]
+
+
+def test_a_verdict_on_a_holiday_the_store_never_had_is_not_written(tmp_path, caplog):
+    store = HolidayStore(tmp_path)
+
+    store.judge(SPINACH.id, "show")
+
+    assert not store.event_path(SPINACH.id).exists()
+    assert "no name for it" in caplog.text
+
+
+def test_a_verdict_has_to_be_one_of_the_three(tmp_path):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [SPINACH])
+
+    with pytest.raises(ValueError):
+        store.judge(SPINACH.id, "lame")
+
+
+def test_the_household_s_override_is_the_verdict_that_counts(tmp_path):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [SPINACH])
+    store.judge(SPINACH.id, "show", "A silly food day")
+
+    edit(store, SPINACH, override=" Hide ")
+
+    judgement = store.judgement(SPINACH.id)
+    assert judgement.verdict == "show"
+    assert judgement.label == "hide"
+
+
+def test_an_override_that_is_not_a_verdict_is_ignored_and_logged(tmp_path, caplog):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [SPINACH])
+    store.judge(SPINACH.id, "show")
+
+    edit(store, SPINACH, override="nope")
+
+    assert store.judgement(SPINACH.id).label == "show"
+    assert "'nope', which is not one of" in caplog.text
+
+
+def test_a_holiday_checkiday_says_something_new_about_keeps_its_verdict(tmp_path):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [CHICKEN])
+    store.judge(CHICKEN.id, "show", "Chickens")
+    edit(store, CHICKEN, override="hide", exemplar=True)
+
+    renamed = CHICKEN._replace(name="National Chicken Appreciation Month")
+    store.remember(ANOTHER_DAY, [renamed])
+
+    assert store.holiday(CHICKEN.id) == renamed
+    assert store.judgement(CHICKEN.id) == Judgement("show", "Chickens", "hide", True)
+
+
+def test_every_holiday_the_store_knows_comes_back_in_the_order_of_its_ids(tmp_path):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [CHICKEN])
+    store.remember(ANOTHER_DAY, [SPINACH])
+
+    assert store.known() == [SPINACH, CHICKEN]
+
+
+def test_the_exemplars_are_the_holidays_marked_as_one(tmp_path):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [SPINACH, CHICKEN])
+    store.judge(SPINACH.id, "show", "A silly food day")
+    store.judge(CHICKEN.id, "show", "Chickens")
+
+    edit(store, SPINACH, exemplar=True)
+
+    assert store.exemplars() == [
+        Exemplar("Fresh Spinach Day", "show", "A silly food day")
+    ]
+
+
+def test_an_exemplar_teaches_its_override_without_the_reason_against_it(tmp_path):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [SPINACH])
+    store.judge(SPINACH.id, "show", "A silly food day")
+
+    edit(store, SPINACH, exemplar=True, override="hide")
+
+    assert store.exemplars() == [Exemplar("Fresh Spinach Day", "hide")]
+
+
+def test_an_override_that_agrees_keeps_the_reason(tmp_path):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [SPINACH])
+    store.judge(SPINACH.id, "show", "A silly food day")
+
+    edit(store, SPINACH, exemplar=True, override="show")
+
+    assert store.exemplars() == [
+        Exemplar("Fresh Spinach Day", "show", "A silly food day")
+    ]
+
+
+def test_an_exemplar_nobody_has_judged_has_nothing_to_teach(tmp_path, caplog):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [SPINACH])
+
+    edit(store, SPINACH, exemplar=True)
+
+    assert store.exemplars() == []
+    assert "no verdict or override" in caplog.text
+
+
+def test_only_a_true_exemplar_is_one(tmp_path):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [SPINACH])
+    store.judge(SPINACH.id, "show")
+
+    edit(store, SPINACH, exemplar="false")
+
+    assert store.exemplars() == []

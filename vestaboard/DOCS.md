@@ -8,6 +8,7 @@ Pushes messages to my Vestaboard in response to Home Assistant events.
 | ------------------- | ---------------------------------------------------------------------- |
 | `api_token`         | Vestaboard Cloud API token, from the Developer section of the web app. |
 | `checkiday_api_key` | Checkiday API key, for the holidays. Optional; leave it empty to skip. |
+| `anthropic_api_key` | Anthropic API key, for leaving the dull and the solemn holidays out. Optional. |
 | `log_level`         | `debug` while you are working on rules, `info` otherwise.              |
 | `dry_run`           | Log what would be sent instead of sending it. Good for testing.        |
 
@@ -51,6 +52,7 @@ Use the **Fire event** action (under *Other actions* in the automation editor):
 | `vestaboard_smoker`   | Shows a cook: `food`, `air`, and a `duration` to count down. |
 | `vestaboard_forecast` | Shows the date, the day's weather, and its high and low.     |
 | `vestaboard_fetch_holidays` | Looks up today's holidays and writes them down.        |
+| `vestaboard_judge_holidays` | Has Claude sort the holidays not sorted yet.           |
 | `vestaboard_show_holiday` | Puts one of today's holidays on the board.               |
 
 A half-hourly rotation, then, is an automation and not a code change:
@@ -322,6 +324,27 @@ only after that are the leftover words replaced with dots.
 The cheer counts for more than spelling the scope out, which is why the second
 one keeps both. A holiday with no room for even the shortest cheer, like the
 last two, takes the board on its own.
+
+## Which holidays go up
+
+With an `anthropic_api_key` on the **Configuration** tab, Claude sorts each new
+holiday as it is looked up: `show` for the fun ones, `hide` for the brand
+promotions, the trade days and the dull, and `sensitive` for memorials,
+diseases and anything else a cheer in front of would be tone-deaf about. Only
+`show` goes up, and the log says why each of the others was left out. Without
+a key every holiday goes up.
+
+Each holiday is asked about once, and the verdict is kept in its file under
+`/data/holidays/events`. Two fields there are yours to edit: `override`, set to
+`show`, `hide` or `sensitive`, wins over Claude's verdict; and `exemplar: true`
+makes the holiday one of the examples Claude is shown every time it is asked,
+which is how it learns this house's taste. The ones worth marking are the ones
+it got wrong.
+
+A holiday that could not be sorted stays off the board until it is. After
+adding the key to an install that already has holidays, fire
+`vestaboard_judge_holidays` once to sort them; after changing the exemplars,
+fire it with `rejudge: true` to sort them all again.
 
 ## Changing what gets sent
 

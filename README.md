@@ -55,6 +55,7 @@ vestaboard/                the app; also the Docker build context
     hass.py                Home Assistant websocket + REST client
     checkiday.py           Checkiday API client: a date's holidays
     holidays.py            the holidays on disk: a day's ids, and what they mean
+    judge.py               Claude's say on which holidays go up
     charcodes.py           character codes, for exact placement
     settings.py            app options, or env vars outside Home Assistant
   tests/
@@ -276,7 +277,8 @@ storage and so survives restarts and updates:
 ```
 /data/holidays/
   days/2026-09-22.json      the ids of that date's holidays
-  events/676cd91e...json    what one id means: its name, its page, its length
+  events/676cd91e...json    what one id means: its name, its page, its length,
+                            and whether it goes up
 ```
 
 They are two things because they go stale at completely different rates. A day
@@ -374,6 +376,56 @@ Checkiday writes for a web page, so a name can arrive with a curly apostrophe,
 an en dash or an accent in it. Those are spelled the plain way the board has
 flaps for, and anything still unsayable becomes a space rather than an error --
 one strange character should cost that character and not the whole board.
+
+Not every holiday is worth cheering, though. Some are a company's idea of a
+sales day, some belong to a trade nobody in the house has heard of, and some are
+solemn -- and `HAPPY PEARL HARBOR REMEMBRANCE DAY` is worse than a dull board.
+So with an `anthropic_api_key` on the **Configuration** tab, Claude sorts each
+new holiday into one of three as the fetch writes it down (`judge.py`):
+
+| Verdict | What it is | Goes up? |
+| --- | --- | --- |
+| `show` | fun, silly, or warmly celebratory | yes |
+| `hide` | a brand's promotion, an industry's day, or just dull | no |
+| `sensitive` | memorials, tragedies, diseases, mourning, anything divisive | no |
+
+The verdict goes in the holiday's own file, so each holiday is asked about once
+however many years it comes round, and the log says why each one left out was
+left out. Without a key every holiday goes up, as before.
+
+Two more fields in that file are yours to set by hand:
+
+```json
+{
+  "id": "676cd91e...", "name": "Fresh Spinach Day", ...,
+  "verdict": "show",
+  "reason": "A silly food day; fine with a cheer in front",
+  "override": "hide",
+  "exemplar": true
+}
+```
+
+`override` is a verdict that wins over Claude's. `exemplar: true` makes the
+holiday one of the examples every later question is asked with -- which is how
+Claude learns this house's taste rather than its own, so the ones worth marking
+are the ones it got wrong. An exemplar teaches its override if it has one,
+otherwise its verdict, and its reason with it unless the override disagrees.
+To give one a reason of your own, edit `verdict` and `reason` directly: nothing
+ever judges an exemplar again.
+
+A holiday nobody could judge -- Claude was down, say -- stays off the board,
+and showing asks about it again, so it turns up as soon as an ask works. To go
+over the store, `vestaboard_judge_holidays` judges anything nobody has, which
+is the thing to fire once after adding the key to a store with holidays in it
+already; with `rejudge: true` it asks about every holiday but the exemplars
+again, which is the thing to fire after changing them.
+
+```yaml
+actions:
+  - event: vestaboard_judge_holidays
+    event_data:
+      rejudge: true
+```
 
 `ctx.board` sends to the board, `ctx.hass` reads state and calls services, and
 `ctx.art` is the art library: `ctx.art.grid("rainbow")` for a named piece,

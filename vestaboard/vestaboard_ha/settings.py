@@ -39,6 +39,7 @@ class Settings:
     ws_url: str
     hass_token: str
     checkiday_api_key: str = ""
+    anthropic_api_key: str = ""
     log_level: str = "info"
     dry_run: bool = False
     web_port: int = DEFAULT_WEB_PORT
@@ -52,6 +53,10 @@ class Settings:
     @property
     def has_checkiday(self) -> bool:
         return bool(self.checkiday_api_key)
+
+    @property
+    def has_judge(self) -> bool:
+        return bool(self.anthropic_api_key)
 
 
 def _load_options() -> dict:
@@ -92,6 +97,9 @@ def load() -> Settings:
         api_token=os.environ.get("VESTABOARD_API_TOKEN", options.get("api_token", "")),
         checkiday_api_key=os.environ.get(
             "CHECKIDAY_API_KEY", options.get("checkiday_api_key", "")
+        ),
+        anthropic_api_key=os.environ.get(
+            "ANTHROPIC_API_KEY", options.get("anthropic_api_key", "")
         ),
         rest_url=rest_url,
         ws_url=ws_url,

@@ -22,6 +22,7 @@ panel_title: Vestaboard
 options:
   api_token: ""
   checkiday_api_key: ""
+  anthropic_api_key: ""
   log_level: info
   dry_run: false
 schema:
@@ -30,5 +31,7 @@ schema:
   # install can do without: making it required would stop an app that is
   # running happily today from starting after an update.
   checkiday_api_key: password?
+  # Optional for the same reason: without it every holiday is shown, as before.
+  anthropic_api_key: password?
   log_level: list(debug|info|warning|error)
   dry_run: bool
