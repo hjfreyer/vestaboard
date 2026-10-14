@@ -311,3 +311,38 @@ def test_only_a_true_exemplar_is_one(tmp_path):
     edit(store, SPINACH, exemplar="false")
 
     assert store.exemplars() == []
+
+
+def test_deciding_writes_the_override_and_the_exemplar_and_nothing_else(tmp_path):
+    store = HolidayStore(tmp_path)
+    store.remember(A_DAY, [SPINACH])
+    store.judge(SPINACH.id, "show", "A silly food day")
+
+    store.decide(SPINACH.id, "hide", True)
+    assert store.judgement(SPINACH.id) == Judgement(
+        "show", "A silly food day", "hide", True
+    )
+
+    store.decide(SPINACH.id, None, False)
+    payload = json.loads(store.event_path(SPINACH.id).read_text())
+    assert "override" not in payload and "exemplar" not in payload
+    assert store.holiday(SPINACH.id) == SPINACH
+
+
+def test_deciding_about_a_holiday_that_is_not_there_is_an_error(tmp_path):
+    store = HolidayStore(tmp_path)
+
+    with pytest.raises(ValueError):
+        store.decide(SPINACH.id, "show", False)
+    with pytest.raises(ValueError):
+        store.decide("../escape", "show", False)
+
+
+def test_whether_a_holiday_goes_up():
+    assert Judgement("show").goes_up(judging=True)
+    assert not Judgement("hide").goes_up(judging=True)
+    assert Judgement("hide", override="show").goes_up(judging=True)
+    assert not Judgement("show", override="sensitive").goes_up(judging=False)
+    # Unjudged: up when nothing is judging, off while waiting on Claude.
+    assert Judgement().goes_up(judging=False)
+    assert not Judgement().goes_up(judging=True)

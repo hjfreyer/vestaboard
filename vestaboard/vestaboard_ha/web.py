@@ -1,4 +1,6 @@
-"""The art gallery: every piece in ``art.py``, drawn chip for chip.
+"""The app's page: the art gallery, and the holidays under review.
+
+The gallery is every piece in ``art.py``, drawn chip for chip.
 
 A card shows the piece itself, at the size it is written: the board's own 15x3
 for a full-size piece or a capture, less for a smaller one. The cards are
@@ -9,7 +11,8 @@ Home Assistant serves this page itself, through ingress, so the app appears in
 the sidebar with an **Open Web UI** button and nothing is exposed to the network
 beyond Supervisor. Ingress mounts us under a path it picks and rewrites per
 session, so every URL in the page has to be relative -- easiest to guarantee by
-having no URLs at all: one route, and the stylesheet inline.
+having one route and the stylesheet inline. The two tabs are the same path with
+a different query, so the links between them are a query and nothing else.
 
 Outside Home Assistant the same page is on ``ingress_port`` directly, which is
 what ``docker-compose.yml`` publishes.
@@ -18,6 +21,11 @@ The Capture button posts back to this same path -- ingress rewrites it per
 session, so a form with no action of its own is the one that always lands in
 the right place -- along with the category to capture into, and the redirect
 afterwards is built from the path ingress tells us it is serving us at.
+
+The holidays tab, ``?page=holidays``, is a section per day of what the fetch
+wrote down and what Claude made of it, with the household's two say-sos on each
+holiday -- the verdict that wins over Claude's, and whether it is an exemplar --
+saved as soon as they are changed.
 """
 
 from __future__ import annotations
@@ -26,7 +34,8 @@ import html
 import json
 import logging
 import re
-from collections.abc import Container, Mapping
+from collections.abc import Container, Mapping, Sequence
+from datetime import date
 from typing import Any
 from urllib.parse import urlencode
 
@@ -34,6 +43,9 @@ from aiohttp import web
 
 from . import art, charcodes
 from .board import BoardError
+from .checkiday import Holiday
+from .holidays import HolidayStore, Judgement
+from .judge import VERDICTS
 from .library import Library
 
 _LOGGER = logging.getLogger(__name__)
@@ -298,6 +310,91 @@ code {
   color: var(--muted);
   font-size: 14px;
 }
+/* The two tabs: the same path, a different query. */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 8px;
+}
+.tabs a {
+  padding: 5px 11px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.tabs a:hover { color: var(--ink); }
+.tabs a[aria-current="page"] {
+  color: var(--page);
+  background: var(--ink);
+}
+.count {
+  margin-left: 6px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: none;
+}
+.holiday { padding: 12px 14px; }
+/* The one just saved, which the redirect lands on. */
+.holiday:target { outline: 2px solid var(--blue); outline-offset: 2px; }
+.heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.heading h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.heading a { color: inherit; text-decoration: none; }
+.heading a:hover { text-decoration: underline; }
+.status {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--ok);
+  border: 1px solid currentColor;
+}
+.off .status { color: var(--muted); }
+.off .heading h3 { color: var(--muted); }
+.why {
+  margin: 4px 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.decide {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  font-size: 13px;
+}
+.decide label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.decide input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--blue);
+}
+/* Saving happens on change; the button is for a browser that will not. */
+.js .decide .save { display: none; }
+.more {
+  align-self: center;
+  color: var(--muted);
+  font-size: 13px;
+}
 """
 
 
@@ -452,6 +549,7 @@ def page(
 <body>
 <header class="top"><div class="inner">
 <div class="titles">
+{tabs("art")}
 <h1>Art gallery</h1>
 <p>{summary}</p>
 </div>
@@ -464,12 +562,226 @@ def page(
 """
 
 
+#: The tabs across the top: what each is called, and the query that gets it.
+TABS = (("art", "Art", "?"), ("holidays", "Holidays", "?page=holidays"))
+
+#: The query that asks for the holidays tab.
+PAGE_KEY = "page"
+HOLIDAYS_PAGE = "holidays"
+
+
+def tabs(current: str) -> str:
+    """The links between the tabs. A query alone, so ingress has nothing to break."""
+    links = "".join(
+        f'<a href="{href}"{' aria-current="page"' if key == current else ""}>'
+        f"{label}</a>"
+        for key, label, href in TABS
+    )
+    return f'<nav class="tabs">{links}</nav>'
+
+
 def show(library: Library, notice: str = "", *, bad_news: bool = False) -> web.Response:
     """The gallery as it stands. Read afresh, so a saved file shows up at once."""
     return web.Response(
         text=page(
             library.pieces(),
             saved=library.saved(),
+            notice=notice,
+            bad_news=bad_news,
+        ),
+        content_type="text/html",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+#: How many days the holidays tab shows to begin with, and how many more each
+#: press of "Show older days" adds. A year of days is a lot of page.
+DAYS_SHOWN = 14
+DAYS_KEY = "days"
+
+#: What the category select calls leaving it to Claude.
+CLAUDES_CALL = ""
+
+
+def _days_asked_for(query: Mapping[str, str]) -> int:
+    """How many days the page should show, from the query, within reason."""
+    raw = str(query.get(DAYS_KEY, ""))
+    return int(raw) if raw.isdigit() and 0 < int(raw) <= 10_000 else DAYS_SHOWN
+
+
+def _anchor(holiday_id: str) -> str:
+    return f"h-{holiday_id}"
+
+
+def describe(judgement: Judgement) -> str:
+    """What Claude said, in a sentence, or that it has not said anything yet."""
+    if judgement.verdict is None:
+        return "Not judged yet."
+    said = f"Claude says {judgement.verdict}"
+    return f"{said}: {judgement.reason}" if judgement.reason else f"{said}."
+
+
+def category_select(judgement: Judgement) -> str:
+    """The category: Claude's call, or one of the three to override it with."""
+    claude = f"Claude's call ({judgement.verdict or 'not judged'})"
+    options = [(CLAUDES_CALL, claude)] + [(verdict, verdict) for verdict in VERDICTS]
+    chosen = judgement.override or CLAUDES_CALL
+    return "".join(
+        f'<option value="{value}"{" selected" if value == chosen else ""}>'
+        f"{html.escape(label)}</option>"
+        for value, label in options
+    )
+
+
+def holiday_card(
+    holiday: Holiday, judgement: Judgement, *, judging: bool, days: int
+) -> str:
+    """One holiday: whether it goes up, why, and the two things to decide.
+
+    The form saves on change, so the select and the box are all there is to
+    it; the Save button is for a browser that will not run the one line of
+    script that does that.
+    """
+    up = judgement.goes_up(judging)
+    name = html.escape(holiday.name)
+    if holiday.url.startswith(("https://", "http://")):
+        name = (
+            f'<a href="{html.escape(holiday.url)}" target="_blank" '
+            f'rel="noopener noreferrer">{name}</a>'
+        )
+    save = html.escape("this.form.requestSubmit()")
+    return (
+        f'<article class="piece holiday{"" if up else " off"}" '
+        f'id="{_anchor(holiday.id)}">'
+        '<div class="heading">'
+        f"<h3>{name}</h3>"
+        f'<span class="status">{"on the board" if up else "off"}</span>'
+        "</div>"
+        f'<p class="why">{html.escape(describe(judgement))}</p>'
+        '<form method="post" class="decide">'
+        f'<input type="hidden" name="holiday" value="{html.escape(holiday.id)}">'
+        f'<input type="hidden" name="{DAYS_KEY}" value="{days}">'
+        f'<label>Category <select name="override" onchange="{save}">'
+        f"{category_select(judgement)}</select></label>"
+        '<label><input type="checkbox" name="exemplar" value="yes"'
+        f'{" checked" if judgement.exemplar else ""} onchange="{save}"> '
+        "Exemplar</label>"
+        '<button class="quiet save">Save</button>'
+        "</form></article>"
+    )
+
+
+def day_section(
+    day: date,
+    holidays: Sequence[Holiday],
+    judgements: Mapping[str, Judgement],
+    *,
+    judging: bool,
+    days: int,
+) -> str:
+    """One day's holidays, under a heading saying how many of them go up."""
+    up = sum(1 for holiday in holidays if judgements[holiday.id].goes_up(judging))
+    cards = "".join(
+        holiday_card(holiday, judgements[holiday.id], judging=judging, days=days)
+        for holiday in holidays
+    )
+    return (
+        f'<section class="group" id="d-{day.isoformat()}">'
+        f'<h2 class="category">{day:%A} {day.day} {day:%B %Y}'
+        f'<span class="count">&middot; {up} of {len(holidays)} on the board'
+        f"</span></h2>{cards}</section>"
+    )
+
+
+def holidays_page(
+    store: HolidayStore,
+    *,
+    judging: bool,
+    days: int = DAYS_SHOWN,
+    notice: str = "",
+    bad_news: bool = False,
+) -> str:
+    """The holidays tab: the latest ``days`` days, a section each, newest first.
+
+    A holiday is listed once, under the latest day it fell on: a month-long one
+    is on thirty days running, and one set of controls for it is plenty. A day
+    whose holidays are all listed under a later one is left out.
+    """
+    known = store.days()
+    shown = list(reversed(known))[:days]
+    listed: set[str] = set()
+    sections = []
+    for day in shown:
+        holidays = [h for h in store.holidays_for(day) if h.id not in listed]
+        listed.update(holiday.id for holiday in holidays)
+        if not holidays:
+            continue
+        judgements = {holiday.id: store.judgement(holiday.id) for holiday in holidays}
+        sections.append(
+            day_section(day, holidays, judgements, judging=judging, days=days)
+        )
+
+    if len(known) > len(shown):
+        sections.append(
+            f'<a class="more" href="?page={HOLIDAYS_PAGE}&amp;{DAYS_KEY}='
+            f'{days + DAYS_SHOWN}">Show older days</a>'
+        )
+    if not sections:
+        sections.append(
+            '<p class="empty">Nothing yet. Fire <code>vestaboard_fetch_holidays'
+            "</code> and the day's holidays will be here.</p>"
+        )
+
+    if judging:
+        summary = (
+            "Only holidays that come out as <code>show</code> go on the board. "
+            "Pick a category to override Claude, and tick Exemplar to make a "
+            "holiday one of the examples Claude learns this house's taste from."
+        )
+    else:
+        summary = (
+            "There is no <code>anthropic_api_key</code>, so Claude is not sorting "
+            "these and everything goes up unless you pick a category for it."
+        )
+
+    banner = ""
+    if notice:
+        bad = " bad" if bad_news else ""
+        banner = f'<p class="notice{bad}">{html.escape(notice)}</p>'
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Vestaboard holidays</title>
+<style>{STYLE}</style>
+<script>document.documentElement.classList.add("js")</script>
+</head>
+<body>
+<header class="top"><div class="inner">
+<div class="titles">
+{tabs(HOLIDAYS_PAGE)}
+<h1>Holidays</h1>
+<p>{summary}</p>
+</div>
+</div></header>
+{banner}
+<main class="gallery">{"".join(sections)}</main>
+</body>
+</html>
+"""
+
+
+def show_holidays(
+    ctx: Any, days: int = DAYS_SHOWN, notice: str = "", *, bad_news: bool = False
+) -> web.Response:
+    return web.Response(
+        text=holidays_page(
+            ctx.holidays,
+            judging=ctx.judge.configured,
+            days=days,
             notice=notice,
             bad_news=bad_news,
         ),
@@ -506,8 +818,10 @@ def notice_for(library: Library, query: Mapping[str, str]) -> str:
 
 async def gallery(request: web.Request) -> web.Response:
     """Rendered per request, so a restart is all an edit to ``art.py`` needs."""
-    library = request.app[CONTEXT].art
-    return show(library, notice_for(library, request.query))
+    ctx = request.app[CONTEXT]
+    if request.query.get(PAGE_KEY) == HOLIDAYS_PAGE:
+        return show_holidays(ctx, _days_asked_for(request.query))
+    return show(ctx.art, notice_for(ctx.art, request.query))
 
 
 async def posted(request: web.Request) -> web.Response:
@@ -519,6 +833,8 @@ async def posted(request: web.Request) -> web.Response:
     """
     ctx = request.app[CONTEXT]
     form = await request.post()
+    if "holiday" in form:
+        return await decide(request, ctx, form)
     if "delete" in form:
         return await delete(request, ctx, str(form["delete"]))
     return await capture(request, ctx, str(form.get("category", "")))
@@ -545,6 +861,32 @@ async def delete(request: web.Request, ctx: Any, name: str) -> web.Response:
         return show(ctx.art, f"Could not delete it: {exc}", bad_news=True)
 
     raise web.HTTPSeeOther(f"{_base_path(request)}/?{urlencode({'deleted': name})}")
+
+
+async def decide(request: web.Request, ctx: Any, form: Mapping[str, Any]) -> web.Response:
+    """Save what was picked for one holiday, and go back to where it is.
+
+    The form is the whole of the decision -- an unticked box is not sent at
+    all -- so a holiday's override and exemplar are both written every time.
+    """
+    holiday_id = str(form.get("holiday", ""))
+    override = str(form.get("override", CLAUDES_CALL)) or None
+    exemplar = "exemplar" in form
+    days = _days_asked_for(form)
+    try:
+        ctx.holidays.decide(holiday_id, override, exemplar)
+    except (ValueError, OSError) as exc:
+        _LOGGER.warning("could not save holiday %s: %s", holiday_id, exc)
+        return show_holidays(ctx, days, f"Could not save that: {exc}", bad_news=True)
+
+    _LOGGER.info(
+        "holidays: %s is now %s%s",
+        holiday_id,
+        override or "Claude's call",
+        ", an exemplar" if exemplar else "",
+    )
+    query = urlencode({PAGE_KEY: HOLIDAYS_PAGE, DAYS_KEY: days})
+    raise web.HTTPSeeOther(f"{_base_path(request)}/?{query}#{_anchor(holiday_id)}")
 
 
 def _base_path(request: web.Request) -> str:

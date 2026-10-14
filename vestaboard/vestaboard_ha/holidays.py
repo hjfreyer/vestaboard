@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from .checkiday import Holiday
-from .judge import VERDICTS, Exemplar
+from .judge import SHOW, VERDICTS, Exemplar
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -74,6 +74,19 @@ class Judgement(NamedTuple):
     @property
     def label(self) -> str | None:
         return self.override or self.verdict
+
+    def goes_up(self, judging: bool) -> bool:
+        """Whether this holiday is one the board will show.
+
+        ``judging`` is whether there is a judge to wait for. Without one, a
+        holiday nobody has judged goes up, which is how the board behaved
+        before there was one; with one, it is kept off until it is judged,
+        since with a cheer in front of every name an unchecked memorial is the
+        worse mistake. Either way an override counts.
+        """
+        if self.label is None:
+            return not judging
+        return self.label == SHOW
 
 
 def _verdict(raw: Any, path: Path, field: str) -> str | None:
@@ -279,6 +292,29 @@ class HolidayStore:
         payload["verdict"] = verdict
         payload["reason"] = reason
         payload["judged"] = datetime.now().isoformat(timespec="seconds")
+        _write(path, payload)
+
+    def decide(self, event_id: str, override: str | None, exemplar: bool) -> None:
+        """Write down what the household decided about a holiday.
+
+        ``override`` is a verdict that wins over Claude's, or None to leave it
+        to Claude; ``exemplar`` is whether the holiday is one of the examples.
+        Everything else in the file is kept as it was.
+        """
+        if override is not None and override not in VERDICTS:
+            raise ValueError(f"{override!r} is not one of {', '.join(VERDICTS)}")
+        path = self.event_path(event_id)
+        payload = _read(path)
+        if payload is None:
+            raise ValueError(f"there is no holiday {event_id} to decide about")
+        if override is None:
+            payload.pop("override", None)
+        else:
+            payload["override"] = override
+        if exemplar:
+            payload["exemplar"] = True
+        else:
+            payload.pop("exemplar", None)
         _write(path, payload)
 
     def exemplars(self) -> list[Exemplar]:
