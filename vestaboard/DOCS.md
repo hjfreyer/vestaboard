@@ -335,11 +335,15 @@ diseases and anything else a cheer in front of would be tone-deaf about. Only
 a key every holiday goes up.
 
 Each holiday is asked about once, and the verdict is kept in its file under
-`/data/holidays/events`. Two fields there are yours to edit: `override`, set to
-`show`, `hide` or `sensitive`, wins over Claude's verdict; and `exemplar: true`
-makes the holiday one of the examples Claude is shown every time it is asked,
-which is how it learns this house's taste. The ones worth marking are the ones
-it got wrong.
+`/data/holidays/events`.
+
+To review them, press **Open Web UI** above and pick the **Holidays** tab: a
+section per day, newest first, showing what Claude said about each holiday and
+whether it is on the board. Each holiday has two things to change, saved as
+soon as you change them. **Category** is Claude's call unless you pick `show`,
+`hide` or `sensitive` to overrule it. **Exemplar** makes the holiday one of the
+examples Claude is shown every time it is asked, which is how it learns this
+house's taste; the ones worth marking are the ones it got wrong.
 
 A holiday that could not be sorted stays off the board until it is. After
 adding the key to an install that already has holidays, fire

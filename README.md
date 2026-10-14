@@ -393,7 +393,15 @@ The verdict goes in the holiday's own file, so each holiday is asked about once
 however many years it comes round, and the log says why each one left out was
 left out. Without a key every holiday goes up, as before.
 
-Two more fields in that file are yours to set by hand:
+The easiest way to review them is the **Holidays** tab on the app's own page
+(**Open Web UI**): a section per day, newest first, with what Claude said about
+each holiday and whether it is on the board. Each has a **Category** menu --
+Claude's call, or `show`, `hide` or `sensitive` to overrule it -- and an
+**Exemplar** box, and a change is saved the moment you make it. A holiday that
+falls on many days, like a month, is listed once, under the latest of them.
+
+Underneath, those are two more fields in the holiday's file, which you can just
+as well set by hand:
 
 ```json
 {
@@ -536,7 +544,8 @@ in Home Assistant, or the sidebar entry if you turn one on from that page. It is
 a scrollable list, one card per piece, labeled with the name to pass as
 `event_data` and marked `saved` when the piece is a file rather than something
 in `art.py`. The cards are grouped under the category to pass as `category`, so
-the page reads as the rotations it is. There is a **Capture the board** button
+the page reads as the rotations it is. (The **Holidays** tab beside it is for
+reviewing the holidays; see above.) There is a **Capture the board** button
 in the header, and a menu beside it for which category the capture lands in.
 
 The page is built on each request, so a saved piece appears the moment it is

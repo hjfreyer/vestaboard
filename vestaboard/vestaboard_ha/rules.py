@@ -28,7 +28,7 @@ from typing import Any
 from . import art, charcodes
 from .app import Context
 from .checkiday import CheckidayError, Holiday
-from .judge import BATCH, SHOW, VERDICTS, JudgeError
+from .judge import BATCH, VERDICTS, JudgeError
 from .registry import on_action
 from .rotation import Rotation
 
@@ -1175,29 +1175,21 @@ def _down_the_middle(lines: list[str]) -> list[str]:
 
 
 def _worth_showing(ctx: Context, holiday: Holiday) -> bool:
-    """Whether the verdict that counts says this holiday can go up.
-
-    With no judge configured, a holiday nobody has judged goes up, which is
-    how the board behaved before there was one; an override still counts.
-    With one, a holiday nobody has judged is kept off until it is: with a
-    cheer in front of every name, an unchecked memorial is the worse mistake.
-    """
+    """Whether the verdict that counts says this holiday can go up, and if
+    not, a word in the log about why."""
     judgement = ctx.holidays.judgement(holiday.id)
-    label = judgement.label
-    if label is None:
-        if ctx.judge.configured:
-            _LOGGER.info("holidays: leaving %r out until it is judged", holiday.name)
-            return False
+    if judgement.goes_up(ctx.judge.configured):
         return True
-    if label != SHOW:
+    if judgement.label is None:
+        _LOGGER.info("holidays: leaving %r out until it is judged", holiday.name)
+    else:
         _LOGGER.info(
             "holidays: leaving %r out, it is %s%s",
             holiday.name,
-            label,
+            judgement.label,
             " (overridden)" if judgement.override else f": {judgement.reason}",
         )
-        return False
-    return True
+    return False
 
 
 @on_action("show_holiday")

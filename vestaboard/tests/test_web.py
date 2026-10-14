@@ -1,10 +1,14 @@
+import re
 import socket
+from datetime import date
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
 from vestaboard_ha import art, web
 from vestaboard_ha.board import BoardError
+from vestaboard_ha.checkiday import Holiday
+from vestaboard_ha.holidays import HolidayStore
 from vestaboard_ha.library import Library
 
 #: A piece is the board: 15 chips by 3.
@@ -31,10 +35,17 @@ class FakeBoard:
         return self.grid
 
 
+class FakeJudge:
+    def __init__(self, configured=True):
+        self.configured = configured
+
+
 class FakeContext:
-    def __init__(self, tmp_path, board=None):
+    def __init__(self, tmp_path, board=None, judging=True):
         self.art = Library(tmp_path)
         self.board = board or FakeBoard()
+        self.holidays = HolidayStore(tmp_path / "holidays")
+        self.judge = FakeJudge(judging)
 
 
 async def get_page(ctx, path="/"):
@@ -152,7 +163,8 @@ def test_the_page_has_no_urls_to_rewrite():
     html = web.page(art.ARTWORKS)
 
     assert "src=" not in html
-    assert "href=" not in html
+    # The tabs are links, but to a query on the same path and nothing more.
+    assert re.findall(r'href="([^"]*)"', html) == ["?", "?page=holidays"]
 
 
 @pytest.mark.asyncio
@@ -452,3 +464,176 @@ async def test_a_category_that_is_not_one_says_why(tmp_path):
     assert response.history == ()
     assert "Could not capture the board" in body
     assert ctx.art.saved() == {}
+
+
+SPINACH = Holiday(
+    "676cd91e31adcacd0a505117d2c4a842",
+    "Fresh Spinach Day",
+    "https://www.checkiday.com/spinach",
+)
+PAYROLL = Holiday("adcacd0a505117d2c4a842676cd91e31", "National Payroll Week")
+CHICKEN = Holiday(
+    "31adcacd0a505117d2c4a842676cd91e", "National Chicken Month", "", True
+)
+MONDAY, TUESDAY = date(2026, 10, 12), date(2026, 10, 13)
+
+
+def a_store(tmp_path, judging=True):
+    """Two days, a holiday on both, and Claude's verdicts on most of them."""
+    ctx = FakeContext(tmp_path, judging=judging)
+    ctx.holidays.remember(MONDAY, [CHICKEN, PAYROLL])
+    ctx.holidays.remember(TUESDAY, [SPINACH, CHICKEN])
+    ctx.holidays.judge(SPINACH.id, "show", "A silly food day")
+    ctx.holidays.judge(PAYROLL.id, "hide", "Nobody here runs payroll")
+    return ctx
+
+
+def card(page, holiday):
+    """One holiday's card out of the page."""
+    start = page.rindex("<article", 0, page.index(f'id="h-{holiday.id}"'))
+    return page[start : page.index("</article>", start)]
+
+
+async def holidays_tab(ctx, query=""):
+    return await get_page(ctx, f"/?page=holidays{query}")
+
+
+@pytest.mark.asyncio
+async def test_the_holidays_tab_is_a_section_per_day_newest_first(tmp_path):
+    _, body = await holidays_tab(a_store(tmp_path))
+
+    assert body.index("Tuesday 13 October 2026") < body.index("Monday 12 October 2026")
+    assert '<a href="?page=holidays" aria-current="page">Holidays</a>' in body
+
+
+@pytest.mark.asyncio
+async def test_a_holiday_on_several_days_is_listed_under_the_latest(tmp_path):
+    _, body = await holidays_tab(a_store(tmp_path))
+
+    assert body.count(f'id="h-{CHICKEN.id}"') == 1
+    assert body.index(f'id="h-{CHICKEN.id}"') < body.index("Monday 12 October")
+
+
+@pytest.mark.asyncio
+async def test_each_holiday_says_whether_it_goes_up_and_why(tmp_path):
+    _, body = await holidays_tab(a_store(tmp_path))
+
+    assert "on the board" in card(body, SPINACH)
+    assert "Claude says show: A silly food day" in card(body, SPINACH)
+    assert 'class="piece holiday off"' in card(body, PAYROLL)
+    assert "Claude says hide: Nobody here runs payroll" in card(body, PAYROLL)
+    # With a judge, a holiday nobody has judged waits until somebody has.
+    assert "Not judged yet." in card(body, CHICKEN)
+    assert 'class="piece holiday off"' in card(body, CHICKEN)
+    assert "1 of 2 on the board" in body
+
+
+@pytest.mark.asyncio
+async def test_without_a_judge_the_unjudged_ones_go_up(tmp_path):
+    _, body = await holidays_tab(a_store(tmp_path, judging=False))
+
+    assert 'class="piece holiday off"' not in card(body, CHICKEN)
+    assert "no <code>anthropic_api_key</code>" in body
+
+
+@pytest.mark.asyncio
+async def test_the_category_starts_at_claude_s_call_and_shows_an_override(tmp_path):
+    ctx = a_store(tmp_path)
+    ctx.holidays.decide(PAYROLL.id, "show", True)
+
+    _, body = await holidays_tab(ctx)
+
+    assert '<option value="" selected>Claude&#x27;s call (show)</option>' in card(
+        body, SPINACH
+    )
+    assert '<option value="show" selected>show</option>' in card(body, PAYROLL)
+    assert "checked" in card(body, PAYROLL)
+    assert "checked" not in card(body, SPINACH)
+    assert "on the board" in card(body, PAYROLL)
+
+
+@pytest.mark.asyncio
+async def test_a_holiday_s_page_is_linked_and_its_name_escaped(tmp_path):
+    ctx = FakeContext(tmp_path)
+    odd = Holiday("ddddddddddddddddddddddddddddddd1", "<b>Bold</b> Day", "javascript:x")
+    ctx.holidays.remember(TUESDAY, [SPINACH, odd])
+
+    _, body = await holidays_tab(ctx)
+
+    assert 'href="https://www.checkiday.com/spinach"' in card(body, SPINACH)
+    assert "&lt;b&gt;Bold&lt;/b&gt; Day" in card(body, odd)
+    # Only a web page is a link; anything else is just the name.
+    assert "javascript" not in body
+
+
+@pytest.mark.asyncio
+async def test_choosing_a_category_saves_it_and_goes_back_to_the_holiday(tmp_path):
+    ctx = a_store(tmp_path)
+
+    response, body = await post(
+        ctx, {"holiday": PAYROLL.id, "override": "show", "exemplar": "yes", "days": "14"}
+    )
+
+    judgement = ctx.holidays.judgement(PAYROLL.id)
+    assert (judgement.override, judgement.exemplar) == ("show", True)
+    assert response.history[0].status == 303
+    assert response.history[0].headers["Location"] == (
+        f"/?page=holidays&days=14#h-{PAYROLL.id}"
+    )
+    assert "on the board" in card(body, PAYROLL)
+
+
+@pytest.mark.asyncio
+async def test_claude_s_call_and_an_unticked_box_undo_them(tmp_path):
+    ctx = a_store(tmp_path)
+    ctx.holidays.decide(PAYROLL.id, "show", True)
+
+    await post(ctx, {"holiday": PAYROLL.id, "override": ""})
+
+    judgement = ctx.holidays.judgement(PAYROLL.id)
+    assert (judgement.override, judgement.exemplar) == (None, False)
+    # Claude's own say is still there underneath.
+    assert judgement.verdict == "hide"
+
+
+@pytest.mark.asyncio
+async def test_a_category_that_is_not_one_is_refused(tmp_path):
+    ctx = a_store(tmp_path)
+
+    response, body = await post(ctx, {"holiday": PAYROLL.id, "override": "lame"})
+
+    assert response.history == ()
+    assert '<p class="notice bad">Could not save that' in body
+    assert ctx.holidays.judgement(PAYROLL.id).override is None
+
+
+@pytest.mark.asyncio
+async def test_a_holiday_that_is_not_there_is_refused(tmp_path):
+    ctx = a_store(tmp_path)
+
+    _, body = await post(ctx, {"holiday": "../../etc/passwd", "override": "show"})
+
+    assert '<p class="notice bad">' in body
+
+
+@pytest.mark.asyncio
+async def test_older_days_are_a_link_away(tmp_path, monkeypatch):
+    monkeypatch.setattr(web, "DAYS_SHOWN", 1)
+    ctx = a_store(tmp_path)
+
+    _, body = await holidays_tab(ctx, "&days=1")
+
+    assert "Monday 12 October" not in body
+    assert 'href="?page=holidays&amp;days=2">Show older days</a>' in body
+
+    _, body = await holidays_tab(ctx, "&days=2")
+    assert "Monday 12 October" in body
+    assert "Show older days" not in body
+
+
+@pytest.mark.asyncio
+async def test_no_holidays_yet_says_how_to_get_some(tmp_path):
+    _, body = await holidays_tab(FakeContext(tmp_path))
+
+    assert "vestaboard_fetch_holidays" in body
+    assert "<article" not in body
