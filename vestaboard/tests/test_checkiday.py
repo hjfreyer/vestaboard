@@ -8,6 +8,7 @@ from vestaboard_ha.checkiday import (
     Checkiday,
     CheckidayError,
     Holiday,
+    allowance,
     holidays_in,
     listing_date,
 )
@@ -220,14 +221,60 @@ async def test_no_key_means_no_request_at_all():
     assert session.calls == []
 
 
+ALL_FOUR = {
+    "X-RateLimit-Limit-Month": "100",
+    "X-RateLimit-Remaining-Month": "97",
+    "X-RateLimit-Limit-Day": "10",
+    "X-RateLimit-Remaining-Day": "9",
+}
+
+
 @pytest.mark.asyncio
-async def test_what_is_left_of_the_month_is_logged(caplog):
+async def test_what_is_left_of_the_month_and_the_day_is_logged(caplog):
     caplog.set_level(logging.INFO)
-    session = FakeSession(a_listing(), headers={"X-RateLimit-Remaining-Month": "97"})
+    session = FakeSession(a_listing(), headers=ALL_FOUR)
 
     await Checkiday("key", session).holidays(A_DAY)
 
-    assert "97 requests left this month" in caplog.text
+    assert (
+        "HTTP 200, 97 of 100 requests left this month, 9 of 10 requests left today"
+        in caplog.text
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_still_says_what_is_left(caplog):
+    caplog.set_level(logging.INFO)
+    session = FakeSession(
+        {"error": "You have exceeded your quota"},
+        status=429,
+        headers={**ALL_FOUR, "X-RateLimit-Remaining-Month": "0"},
+    )
+
+    with pytest.raises(CheckidayError):
+        await Checkiday("key", session).holidays(A_DAY)
+
+    assert "HTTP 429, 0 of 100 requests left this month" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_no_rate_limit_headers_says_so(caplog):
+    caplog.set_level(logging.INFO)
+    session = FakeSession(a_listing())
+
+    await Checkiday("key", session).holidays(A_DAY)
+
+    assert "HTTP 200, with nothing said about the allowance" in caplog.text
+
+
+def test_some_of_the_headers_still_say_what_they_can():
+    assert allowance({"X-RateLimit-Remaining-Month": "97"}) == (
+        "97 requests left this month"
+    )
+    assert allowance({"X-RateLimit-Limit-Day": "10"}) == (
+        "a limit of 10 requests today"
+    )
+    assert allowance({}) == ""
 
 
 def test_a_listing_with_no_lists_in_it_is_an_error():
