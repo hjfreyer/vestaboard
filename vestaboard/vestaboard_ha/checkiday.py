@@ -45,9 +45,37 @@ EVENTS_URL = f"{ENDPOINT}events"
 #: so it does not end up in anybody's logs.
 KEY_HEADER = "apikey"
 
-#: What is left of the month's requests, which the API says in a header rather
-#: than in the body. Worth logging: the allowance is the reason for the caches.
-REMAINING_HEADER = "X-RateLimit-Remaining-Month"
+#: The allowance, and what is left of it, which the API says in headers rather
+#: than in the body -- on a refusal as well as an answer. Worth logging every
+#: time: the allowance is the reason for the caches, and how fast it goes down
+#: is how to tell whether something is asking more often than it should.
+LIMIT_MONTH = "X-RateLimit-Limit-Month"
+REMAINING_MONTH = "X-RateLimit-Remaining-Month"
+LIMIT_DAY = "X-RateLimit-Limit-Day"
+REMAINING_DAY = "X-RateLimit-Remaining-Day"
+RATE_LIMIT_HEADERS = (LIMIT_MONTH, REMAINING_MONTH, LIMIT_DAY, REMAINING_DAY)
+
+
+def allowance(headers: Mapping[str, str]) -> str:
+    """What the rate-limit headers say, as a phrase for the log, or nothing.
+
+    Each period is "left of limit" where both came back, and just one of the
+    two where only one did, so a gateway that sends some of them still says
+    what it can.
+    """
+    parts = []
+    for period, limit_key, left_key in (
+        ("this month", LIMIT_MONTH, REMAINING_MONTH),
+        ("today", LIMIT_DAY, REMAINING_DAY),
+    ):
+        limit, left = headers.get(limit_key), headers.get(left_key)
+        if left is not None and limit is not None:
+            parts.append(f"{left} of {limit} requests left {period}")
+        elif left is not None:
+            parts.append(f"{left} requests left {period}")
+        elif limit is not None:
+            parts.append(f"a limit of {limit} requests {period}")
+    return ", ".join(parts)
 
 #: How long one ask may take, which is a good deal longer than the half a
 #: minute everything else gets: Checkiday is slow often enough to time out on
@@ -218,7 +246,7 @@ class Checkiday:
 
         for retry in range(RETRIES + 1):
             try:
-                status, body, remaining = await self._ask(params)
+                status, body, limits = await self._ask(params)
                 break
             except TimeoutError as exc:
                 if retry == RETRIES:
@@ -229,6 +257,12 @@ class Checkiday:
                 _LOGGER.warning(
                     "checkiday: no answer within %.0fs; asking again", TIMEOUT.total
                 )
+
+        # Before anything can go wrong with the answer: a refusal spends no
+        # less of the allowance, and an over-quota one is exactly when the
+        # numbers are worth seeing.
+        said = allowance(limits) or "with nothing said about the allowance"
+        _LOGGER.info("checkiday: HTTP %d, %s", status, said)
 
         try:
             payload = json.loads(body)
@@ -247,13 +281,12 @@ class Checkiday:
                 said = payload.get("error") or payload.get("message") or ""
             raise CheckidayError(f"HTTP {status} from Checkiday: {said or body[:200]}")
 
-        if remaining is not None:
-            _LOGGER.info("checkiday: %s requests left this month", remaining)
-
         return holidays_in(payload)
 
-    async def _ask(self, params: dict[str, str]) -> tuple[int, str, str | None]:
-        """One request: its status, its body, and what is left of the month."""
+    async def _ask(
+        self, params: dict[str, str]
+    ) -> tuple[int, str, dict[str, str]]:
+        """One request: its status, its body, and its rate-limit headers."""
         async with self._session.get(
             EVENTS_URL,
             params=params,
@@ -263,5 +296,9 @@ class Checkiday:
             return (
                 response.status,
                 await response.text(),
-                response.headers.get(REMAINING_HEADER),
+                {
+                    key: response.headers[key]
+                    for key in RATE_LIMIT_HEADERS
+                    if key in response.headers
+                },
             )
