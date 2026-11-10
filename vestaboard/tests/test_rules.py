@@ -51,7 +51,7 @@ class FakeCheckiday:
         self.day = day
         self.asked = []
 
-    async def holidays(self, day=None, *, adult=False):
+    async def holidays(self, day=None):
         self.asked.append(day)
         if self.raising is not None:
             raise self.raising
