@@ -9,11 +9,11 @@ Every call is one request of a monthly allowance, which is why nothing here
 asks twice for the same day. ``holidays.py`` is what remembers a day, and the
 ``fetch_holidays`` rule is what decides whether to ask at all.
 
-Two of the three things a request can say are sold rather than given, and a
-plan that does not include one is not allowed to say it at all:
+Two of the things a request can say are sold rather than given, and a plan
+that does not include one is not allowed to say it at all. (``adult``, which
+would include the entries marked unsafe for children or for work, is not sent
+either: not every plan has access to it, so the default applies.)
 
-* ``adult``, whether to include the entries Checkiday marks unsafe for children
-  or for work, is on every plan, the free one included.
 * ``date``, which day to ask about, wants a Pro plan. Without one there is only
   today, which is why this is asked with no date at all and the day comes back
   in the answer.
@@ -222,15 +222,11 @@ class Checkiday:
         """Whether there is a key to ask with. Without one there is no asking."""
         return bool(self._api_key)
 
-    async def holidays(
-        self, day: date | None = None, *, adult: bool = False
-    ) -> Listing:
+    async def holidays(self, day: date | None = None) -> Listing:
         """The holidays on a date, or on Checkiday's own today without one.
 
         A ``day`` wants a Pro plan, so the rule asks for none and takes whatever
-        today turns out to be; the answer says which day that was. ``adult`` is
-        Checkiday's own switch for the entries it marks unsafe for children or
-        for work, and is on every plan; this board is in a house, so it is off.
+        today turns out to be; the answer says which day that was.
         """
         if not self._api_key:
             raise CheckidayError("no Checkiday API key configured")
@@ -238,7 +234,7 @@ class Checkiday:
         # Only what the plan allows: anything else is not ignored but refused,
         # so a free key that said either of the other two would get nothing at
         # all rather than an answer worked out some other way.
-        params = {"adult": "true" if adult else "false"}
+        params: dict[str, str] = {}
         if day is not None:
             params["date"] = day.isoformat()
         if self._timezone:

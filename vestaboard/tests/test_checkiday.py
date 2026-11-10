@@ -118,8 +118,8 @@ async def test_a_paid_plan_may_say_which_date_and_whose_timezone():
     assert call["headers"]["apikey"] == "secret"
     assert call["params"]["date"] == "2026-09-22"
     assert call["params"]["timezone"] == "America/Los_Angeles"
-    # The board is in a house; Checkiday's grown-up entries stay out of it.
-    assert call["params"]["adult"] == "false"
+    # Not every plan may say "adult", so it is never sent.
+    assert "adult" not in call["params"]
 
 
 @pytest.mark.asyncio
@@ -303,14 +303,14 @@ async def test_a_key_the_gateway_will_not_take_says_why():
 
 
 @pytest.mark.asyncio
-async def test_nothing_but_adult_is_sent_when_there_is_nothing_else_to_say():
-    # The shape of every request a free or Starter key can make: saying either
-    # of the other two is refused rather than ignored.
+async def test_nothing_is_sent_when_there_is_nothing_to_say():
+    # The shape of every request a free or Starter key can make: saying any
+    # of the other things is refused rather than ignored.
     session = FakeSession(a_listing())
 
     await Checkiday("key", session).holidays()
 
-    assert session.calls[0]["params"] == {"adult": "false"}
+    assert session.calls[0]["params"] == {}
 
 
 @pytest.mark.asyncio
