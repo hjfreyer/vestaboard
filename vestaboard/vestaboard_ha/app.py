@@ -9,7 +9,7 @@ from typing import Any
 
 import aiohttp
 
-from . import registry, web
+from . import httplog, registry, web
 from . import settings as settings_module
 from .board import Vestaboard
 from .checkiday import Checkiday
@@ -84,7 +84,9 @@ async def run() -> None:
         _LOGGER.info("no Anthropic API key, so every holiday goes on the board")
 
     async with aiohttp.ClientSession(
-        timeout=aiohttp.ClientTimeout(total=30)
+        timeout=aiohttp.ClientTimeout(total=30),
+        # Every request and its answer, at debug; nothing at any other level.
+        trace_configs=httplog.trace_configs(),
     ) as session:
         ctx = Context(
             board=Vestaboard(

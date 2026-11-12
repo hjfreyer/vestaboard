@@ -9,7 +9,7 @@ Pushes messages to my Vestaboard in response to Home Assistant events.
 | `api_token`         | Vestaboard Cloud API token, from the Developer section of the web app. |
 | `checkiday_api_key` | Checkiday API key, for the holidays. Optional; leave it empty to skip. |
 | `anthropic_api_key` | Anthropic API key, for leaving the dull and the solemn holidays out. Optional. |
-| `log_level`         | `debug` while you are working on rules, `info` otherwise.              |
+| `log_level`         | `debug` while you are working on rules, `info` otherwise. At `debug` every HTTP request and its answer is logged in full, with the keys cut down to their last four characters. |
 | `dry_run`           | Log what would be sent instead of sending it. Good for testing.        |
 
 Home Assistant access needs no configuration: the app talks to it through the
